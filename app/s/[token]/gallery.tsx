@@ -48,7 +48,8 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
   const [toast, setToast] = useState("");
   const [busy, setBusy] = useState("");
   const [view, setView] = useState<View>("grid");
-  const [cols, setCols] = useState(6); // tiles across: 1 = full width … 8 = smallest (phone 1–3)
+  const [cols, setCols] = useState(6);
+  const [showHid, setShowHid] = useState(true); // admin: show hidden-from-visitors files (dimmed) // tiles across: 1 = full width … 8 = smallest (phone 1–3)
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [galIdx, setGalIdx] = useState(0);
   const [condensed, setCondensed] = useState(false);
@@ -66,6 +67,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
   // restore prefs
   useEffect(() => {
     const v = ls.get("share:view") as View | null; if (v) setView(v);
+    const h = ls.get("share:showhid"); if (h !== null) setShowHid(h !== "0");
     const s = ls.get("share:cols"); if (s) setCols(Math.min(8, Math.max(1, Number(s))));
     const t = ls.get("share:theme") as "dark" | "light" | null;
     if (t) setTheme(t); else if (window.matchMedia?.("(prefers-color-scheme: light)").matches) setTheme("light");
@@ -73,6 +75,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
   useEffect(() => { document.documentElement.dataset.theme = theme; ls.set("share:theme", theme); }, [theme]);
   useEffect(() => { ls.set("share:view", view); }, [view]);
   useEffect(() => { ls.set("share:cols", String(cols)); }, [cols]);
+  useEffect(() => { ls.set("share:showhid", showHid ? "1" : "0"); }, [showHid]);
 
   const load = useCallback(async (p: string, quiet = false) => {
     if (!quiet) setEntries(null);
@@ -124,7 +127,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
 
   const raw = entries || [];
   const counts = useMemo(() => { const c: Record<Filter, number> = { photo: 0, video: 0, audio: 0, other: 0 }; raw.forEach((e) => { const f = filterOf(e.kind); if (f) c[f]++; }); return c; }, [raw]);
-  const all = useMemo(() => filters.size ? raw.filter((e) => e.kind === "folder" || filters.has(filterOf(e.kind)!)) : raw, [raw, filters]);
+  const all = useMemo(() => { const base = showHid ? raw : raw.filter((e) => !e.hidden); return filters.size ? base.filter((e) => e.kind === "folder" || filters.has(filterOf(e.kind)!)) : base; }, [raw, filters, showHid]);
   const toggleFilter = (f: Filter) => setFilters((s) => { const n = new Set(s); n.has(f) ? n.delete(f) : n.add(f); return n; });
   const files = useMemo(() => all.filter((e) => e.kind !== "folder"), [all]);
   const folders = useMemo(() => all.filter((e) => e.kind === "folder"), [all]);
@@ -350,10 +353,11 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
           ))}
         </div>
         </div>
-        {(view === "grid" || view === "gallery") && (
-          <label className="slider" title={`${cols} across`}><IGrid small /><input type="range" min={1} max={8} step={1} value={9 - cols} onChange={(e) => setCols(9 - Number(e.target.value))} aria-label="Tiles across" /><IGrid /></label>
+        {(view === "grid" || view === "gallery") && (<>
+          {admin && nHidden > 0 && <label className={`hidtog ${showHid ? "on" : "off"}`} title="Hidden photos are invisible to visitors. Tick to see them here (dimmed)."><input type="checkbox" checked={showHid} onChange={(e) => setShowHid(e.target.checked)} /><span className="bx">{showHid && <svg width="10" height="10" viewBox="0 0 11 11" aria-hidden="true"><path d="M1.5 6l3 3 5-7" stroke="#0c0c0d" strokeWidth="1.8" fill="none" /></svg>}</span>SHOW HIDDEN · {nHidden}</label>}
+          <label className="slider" title={`${cols} across`}><IGrid small /><input type="range" min={1} max={8} step={1} value={9 - cols} onChange={(e) => setCols(9 - Number(e.target.value))} aria-label="Tiles across" /><IGrid /></label></>
         )}
-        <span className="sub" style={{ marginLeft: "auto" }}>{admin && nHidden ? <span className="ahint">{nHidden} HIDDEN FROM VISITORS · </span> : null}{sel.size ? `${sel.size} SELECTED` : filters.size ? `SHOWING ${[...filters].map((f) => f.toUpperCase()).join(" + ")} · ${files.length}` : "CLICK TO OPEN · ⇧ SHIFT-CLICK RANGE · ⌘-CLICK TOGGLE"}</span>
+        <span className="sub" style={{ marginLeft: "auto" }}>{sel.size ? `${sel.size} SELECTED` : filters.size ? `SHOWING ${[...filters].map((f) => f.toUpperCase()).join(" + ")} · ${files.length}` : "CLICK TO OPEN · ⇧ SHIFT-CLICK RANGE · ⌘-CLICK TOGGLE"}</span>
       </div>
       </div>
 
