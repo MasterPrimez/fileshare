@@ -1,6 +1,6 @@
 # HANDOFF — fileshare (share.michaelstine.net)
 
-Last updated: 2026-11-02 by Claude. Status: **live and working.**
+Last updated: 2026-11-05 by Claude. Status: **live and working.**
 
 v2 (same day): visitor gallery got view modes (grid / list / columns / gallery), thumbnail size slider, shift-click range + ⌘-click toggle select, light/dark toggle (persisted in localStorage), single-click closes lightbox. Admin New-share got a resizable picker + preview panel.
 
@@ -39,10 +39,13 @@ sudo docker compose ps
 sed -i 's/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=NEW/' .env && sudo docker compose up -d   # change admin pw
 ```
 
-## Deploying a code change
-1. Edit files locally (or get an update zip from Claude).
-2. Upload changed files into `docker/fileshare` via UGOS Files (overwrite). Dotfiles don't upload from Mac Finder — `.env` is created on the NAS directly.
-3. `sudo docker compose up -d --build`
+## Deploying a code change (auto, since 2026-11-05)
+Source of truth: private repo `github.com/MasterPrimez/fileshare` (branch `main`). `.env` and `data/` are gitignored — never in the repo.
+- NAS has a read-only deploy key (`/root/.ssh/fileshare_deploy`, added under repo Settings → Deploy keys).
+- UGOS has no git/apt; `/usr/local/bin/git` is a wrapper that runs `alpine/git` in Docker.
+- Root cron every 2 min runs `/volume1/docker/fileshare/deploy.sh`: fetch → if main moved, `git reset --hard` + `docker compose build` + `up -d`. Log: `data/deploy.log`.
+- Push to main = live within ~2 min. Manual: `sudo ./deploy.sh` (`sudo ./deploy.sh force` to rebuild anyway). Rollback: `git revert` + push.
+- Stale-cache symptom (build says CACHED, change missing): `sudo docker compose build --no-cache && sudo docker compose up -d`.
 
 ## Code map
 ```
