@@ -102,6 +102,9 @@ Shares page has grid (cover cards, hover → Open/Edit/Copy) and list views. Log
 ## Collections (multi-folder shares)
 `shares.paths` = JSON array of root-relative folders (null = single-folder share using `path`). Visitor sees each as a top-level folder named by basename (`shareItems()` de-dupes). `mapSub(share, sub)` in lib/shares.ts resolves a visitor path's first segment to the right base; all visitor routes go through it. At the collection top: no upload/delete; Download All zips every folder. Admin: browse → "+ Add to collection" per folder; phone: "+ ADD" on the picker.
 
+## Hidden files (admin)
+`hidden` table: root-relative file path. Admin hides a photo from the ★/👁 hover control or by selecting + HIDE (blue). Hidden files vanish for every visitor in every share: list, thumb, file, zip (`isHidden` checks in lib/files.ts + the visitor routes). Admin sees them dimmed with a HIDDEN badge; the eye restores. Disk is never touched. API: `PATCH /api/admin/hide {paths, hidden}`.
+
 ## Folder covers
 `covers` table: root-relative folder path → path inside it (`IMG.jpg` or `Sub/IMG.jpg`, so a parent can use a photo from a subfolder). Set from the ★ cover picker (Library / share detail / New Share preview); drill into subfolders and ★ there — it still sets the folder you opened the picker for. No cover set = first photo, else first photo found in a subfolder. Shown on visitor folder tiles / filmstrip / columns, and in the admin + phone pickers. API: `PATCH /api/admin/cover {path, file|null}`.
 

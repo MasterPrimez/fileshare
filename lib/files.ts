@@ -33,6 +33,7 @@ export type Entry = {
   count?: number;
   cover?: string | null; // for folders: rel (within the same listing base) of the cover image
   alias?: string | null; // folders: display name override (name already reflects it)
+  hidden?: boolean; // admin only: file is hidden from every visitor
   real?: string; // admin only: root-relative path
 };
 
@@ -46,7 +47,7 @@ export function kindOf(name: string): Entry["kind"] {
 }
 
 /** List entries of a folder inside a share. `shareRoot` is the share's rel path, `sub` is within it. */
-export function listDir(shareRoot: string, sub: string): Entry[] | null {
+export function listDir(shareRoot: string, sub: string, opts: { admin?: boolean } = {}): Entry[] | null {
   const r = resolveInShare(shareRoot, sub);
   if (!r || !fs.existsSync(r.abs) || !fs.statSync(r.abs).isDirectory()) return null;
   const out: Entry[] = [];
@@ -62,13 +63,16 @@ export function listDir(shareRoot: string, sub: string): Entry[] | null {
         const names = fs.readdirSync(abs).filter((n) => !n.startsWith(".") && n !== "@eaDir");
         count = names.length;
         const set = getCover(path.posix.join(r.rel, d.name));
-        const pick = set && coverExists(abs, set) ? set : names.filter((n) => kindOf(n) === "image").sort()[0];
+        const pick = set && coverExists(abs, set) ? set : names.filter((n) => kindOf(n) === "image" && !isHidden(path.posix.join(r.rel, d.name, n))).sort()[0];
         if (pick) cover = path.posix.join(rel, pick);
       } catch {}
       const alias = getAlias(path.posix.join(r.rel, d.name));
       out.push({ name: alias || d.name, rel, kind: "folder", size: 0, mtime: st.mtimeMs, count, cover, alias, real: path.posix.join(r.rel, d.name) });
     } else {
-      out.push({ name: d.name, rel, kind: kindOf(d.name), size: st.size, mtime: st.mtimeMs, real: path.posix.join(r.rel, d.name) });
+      const real = path.posix.join(r.rel, d.name);
+      const hid = isHidden(real);
+      if (hid && !opts.admin) continue;
+      out.push({ name: d.name, rel, kind: kindOf(d.name), size: st.size, mtime: st.mtimeMs, real, hidden: hid });
     }
   }
   out.sort((a, b) => (a.kind === "folder") === (b.kind === "folder") ? a.name.localeCompare(b.name) : a.kind === "folder" ? -1 : 1);
@@ -82,16 +86,24 @@ export function statIn(shareRoot: string, sub: string) {
 }
 
 /** Walk a folder recursively, returning files with rel paths. */
-export function walk(abs: string, base = ""): { abs: string; rel: string; size: number }[] {
+export function walk(abs: string, base = "", realBase?: string): { abs: string; rel: string; size: number }[] {
   const out: { abs: string; rel: string; size: number }[] = [];
   for (const d of fs.readdirSync(abs, { withFileTypes: true })) {
     if (d.name.startsWith(".") || d.name === "@eaDir") continue;
     const p = path.join(abs, d.name);
     const rel = path.posix.join(base, d.name);
-    if (d.isDirectory()) out.push(...walk(p, rel));
-    else out.push({ abs: p, rel, size: fs.statSync(p).size });
+    const real = realBase !== undefined ? path.posix.join(realBase, d.name) : undefined;
+    if (d.isDirectory()) out.push(...walk(p, rel, real));
+    else { if (real !== undefined && isHidden(real)) continue; out.push({ abs: p, rel, size: fs.statSync(p).size }); }
   }
   return out;
+}
+
+/** Files hidden from every visitor (root-relative path). The file itself is never touched. */
+export function isHidden(real: string) { return !!db.prepare("SELECT 1 FROM hidden WHERE path = ?").get(real); }
+export function setHidden(real: string, hidden: boolean) {
+  if (hidden) db.prepare("INSERT OR IGNORE INTO hidden (path, at) VALUES (?, ?)").run(real, Date.now());
+  else db.prepare("DELETE FROM hidden WHERE path = ?").run(real);
 }
 
 /** Return a cached thumbnail path (JPEG, 600px wide) for an image or video. */
@@ -188,8 +200,8 @@ export function setAlias(folderRel: string, name: string | null) {
   else db.prepare("DELETE FROM aliases WHERE path = ?").run(folderRel);
 }
 /** Strip admin-only fields before sending to a visitor. */
-export function publicEntries<T extends { real?: string; alias?: string | null }>(list: T[]): T[] {
-  return list.map((e) => { const { real: _r, alias: _a, ...rest } = e; return rest as T; });
+export function publicEntries<T extends { real?: string; alias?: string | null; hidden?: boolean }>(list: T[]): T[] {
+  return list.filter((e) => !e.hidden).map((e) => { const { real: _r, alias: _a, hidden: _h, ...rest } = e; return rest as T; });
 }
 
 /** First usable cover for a folder: set cover, else first photo, else first photo in a subfolder (2 deep). */

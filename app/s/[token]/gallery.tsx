@@ -5,7 +5,7 @@ import AdminStrip from "./adminstrip";
 import Tour from "./tour";
 import { CoverModal } from "../../admin/pickers";
 
-type Entry = { name: string; rel: string; kind: "folder" | "image" | "video" | "raw" | "audio" | "file"; size: number; mtime: number; count?: number; duration?: number | null; cover?: string | null; alias?: string | null; real?: string };
+type Entry = { name: string; rel: string; kind: "folder" | "image" | "video" | "raw" | "audio" | "file"; size: number; mtime: number; count?: number; duration?: number | null; cover?: string | null; alias?: string | null; real?: string; hidden?: boolean };
 type Crumb = { rel: string; name: string };
 const readUrl = () => { const u = new URL(location.href); return { p: u.searchParams.get("p") || "", f: u.searchParams.get("f") }; };
 type View = "grid" | "list" | "columns" | "gallery";
@@ -259,9 +259,17 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
     const r = await fetch(`/api/admin/shares/${shareId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ paths: folders.filter((f) => f !== e.real) }) });
     say(r.ok ? "REMOVED" : "FAILED"); setLevels({}); reload();
   }
+  async function hide(list: Entry[], hidden: boolean) {
+    const paths = list.map((e) => e.real).filter(Boolean);
+    if (!paths.length) return;
+    const r = await fetch("/api/admin/hide", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ paths, hidden }) });
+    say(r.ok ? (hidden ? `${paths.length} HIDDEN FROM VISITORS` : `${paths.length} VISIBLE AGAIN`) : "FAILED"); setSel(new Set()); setLevels({}); reload();
+  }
+  const selEntries = all.filter((e) => sel.has(e.rel) && e.kind !== "folder");
+  const nHidden = raw.filter((e) => e.hidden).length;
   const canRemove = !!admin && !isLib && isColl && !path && folders.length > 1;
   const canRename = (e: Entry) => !!admin && e.kind === "folder" && !!e.real && e.real.includes("/");
-  const adminTile = admin ? { renaming, onCover: (e: Entry) => e.real && setCoverFor(e.real), onRenameStart: (e: Entry) => canRename(e) && setRenaming(e.rel), onRename: renameFolder, onRemove: canRemove ? removeFolder : undefined, canRename } : undefined;
+  const adminTile = admin ? { renaming, onCover: (e: Entry) => e.real && setCoverFor(e.real), onRenameStart: (e: Entry) => canRename(e) && setRenaming(e.rel), onRename: renameFolder, onRemove: canRemove ? removeFolder : undefined, canRename, onHide: (e: Entry) => hide([e], !e.hidden) } : undefined;
 
   return (
     <div className="page">
@@ -300,6 +308,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
         <div className="actions">
           <button className="btn" onClick={toggleAll} disabled={!all.length}>{sel.size && sel.size === all.length ? "CLEAR" : "SELECT ALL"}</button>
           {sel.size > 0 && <button className="btn" onClick={() => zip([...sel])} disabled={!!busy}>DOWNLOAD SELECTED ({sel.size})</button>}
+          {admin && selEntries.length > 0 && <button className="btn blue" onClick={() => hide(selEntries, !selEntries.every((e) => e.hidden))} title="Hide from every visitor — files stay on the NAS">{selEntries.every((e) => e.hidden) ? `SHOW (${selEntries.length})` : `HIDE (${selEntries.length})`}</button>}
           {canEdit && !(isColl && !path) && <>
             <input ref={fileIn} type="file" multiple hidden onChange={(e) => upload(e.target.files)} />
             <button className="btn" onClick={() => fileIn.current?.click()} disabled={!!busy}>UPLOAD</button>
@@ -329,7 +338,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
         {(view === "grid" || view === "gallery") && (
           <label className="slider"><IGrid small /><input type="range" min={120} max={480} step={10} value={size} onChange={(e) => setSize(Number(e.target.value))} aria-label="Thumbnail size" /><IGrid /></label>
         )}
-        <span className="sub" style={{ marginLeft: "auto" }}>{sel.size ? `${sel.size} SELECTED` : filters.size ? `SHOWING ${[...filters].map((f) => f.toUpperCase()).join(" + ")} · ${files.length}` : "CLICK TO OPEN · ⇧ SHIFT-CLICK RANGE · ⌘-CLICK TOGGLE"}</span>
+        <span className="sub" style={{ marginLeft: "auto" }}>{admin && nHidden ? <span className="ahint">{nHidden} HIDDEN FROM VISITORS · </span> : null}{sel.size ? `${sel.size} SELECTED` : filters.size ? `SHOWING ${[...filters].map((f) => f.toUpperCase()).join(" + ")} · ${files.length}` : "CLICK TO OPEN · ⇧ SHIFT-CLICK RANGE · ⌘-CLICK TOGGLE"}</span>
       </div>
       </div>
 
@@ -350,12 +359,12 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
               {all.map((e) => {
                 const isSel = sel.has(e.rel);
                 return (
-                  <tr key={e.rel} className={isSel ? "sel" : ""} onClick={(ev) => openEntry(e, ev)} onContextMenu={(ev) => { ev.preventDefault(); select(e.rel, ev); }}>
+                  <tr key={e.rel} className={`${isSel ? "sel" : ""} ${e.hidden ? "hid" : ""}`} onClick={(ev) => openEntry(e, ev)} onContextMenu={(ev) => { ev.preventDefault(); select(e.rel, ev); }}>
                     <td><span className="box" onClick={(ev) => { ev.stopPropagation(); select(e.rel, ev); }}>{isSel && <Check />}</span></td>
                     <td>{e.kind === "folder" ? <span className="mini folder"><svg width="18" height="14" viewBox="0 0 28 22" aria-hidden="true"><path d="M1 4a2 2 0 0 1 2-2h7l3 3h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z" fill="none" stroke="var(--amber)" strokeWidth="1.5" /></svg></span>
                       : (e.kind === "image" || e.kind === "video" || e.kind === "raw") ? <span className="miniwrap"><img className="mini" src={thumbUrl(e.rel, 120)} alt="" loading="lazy" />{e.kind === "video" && <span className="cam"><Play /></span>}</span> : <span className="mini">{(e.name.split(".").pop() || "").toUpperCase()}</span>}</td>
                     <td className="nm">{adminTile && renaming === e.rel ? <RenameBox name={e.name} onDone={(n) => renameFolder(e, n)} /> : <>{e.name}{adminTile && canRename(e) && <span className="apencil" title="Rename (display only)" onClick={(ev) => { ev.stopPropagation(); setRenaming(e.rel); }}>✎</span>}</>}</td>
-                    <td className="dim">{e.kind === "folder" ? `FOLDER · ${e.count}` : (e.kind === "video" || e.kind === "audio") && e.duration ? `${e.kind.toUpperCase()} · ${fmtDur(e.duration)}` : e.kind.toUpperCase()}</td>
+                    <td className="dim">{e.kind === "folder" ? `FOLDER · ${e.count}` : (e.kind === "video" || e.kind === "audio") && e.duration ? `${e.kind.toUpperCase()} · ${fmtDur(e.duration)}` : e.kind.toUpperCase()}{adminTile && e.kind !== "folder" && <span className="apencil" title={e.hidden ? "Show to visitors" : "Hide from visitors"} onClick={(ev) => { ev.stopPropagation(); hide([e], !e.hidden); }}>{e.hidden ? <IEye /> : <IEyeOff />}</span>}</td>
                     <td className="dim">{e.kind === "folder" ? "—" : fmtSize(e.size)}</td>
                     <td className="dim">{fmtDT(e.mtime)}</td>
                   </tr>
@@ -464,7 +473,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
   );
 }
 
-type AdmTile = { renaming: string | null; onCover: (e: Entry) => void; onRenameStart: (e: Entry) => void; onRename: (e: Entry, name: string) => void; onRemove?: (e: Entry) => void; canRename: (e: Entry) => boolean };
+type AdmTile = { renaming: string | null; onCover: (e: Entry) => void; onRenameStart: (e: Entry) => void; onRename: (e: Entry, name: string) => void; onRemove?: (e: Entry) => void; canRename: (e: Entry) => boolean; onHide: (e: Entry) => void };
 
 function RenameBox({ name, onDone }: { name: string; onDone: (n: string) => void }) {
   const [v, setV] = useState(name);
@@ -488,11 +497,13 @@ function Tile({ e, isSel, thumb, onOpen, onSelect, adm }: { e: Entry; isSel: boo
     </button>
   ); }
   return (
-    <button className={`tile ${isSel ? "sel" : ""}`} onClick={(ev) => onOpen(e, ev)} onContextMenu={(ev) => { ev.preventDefault(); onSelect(e.rel, ev); }} aria-label={e.name}>
+    <button className={`tile ${isSel ? "sel" : ""} ${e.hidden ? "hid" : ""} ${adm ? "adm" : ""}`} onClick={(ev) => onOpen(e, ev)} onContextMenu={(ev) => { ev.preventDefault(); onSelect(e.rel, ev); }} aria-label={e.name}>
       {thumbable ? <Thumb src={thumb} ext={e.name.split(".").pop() || ""} /> : <span className="noimg">{(e.name.split(".").pop() || "FILE").toUpperCase()}</span>}
+      {adm && <span className="ahover file" onClick={(ev) => ev.stopPropagation()}><span className={e.hidden ? "on" : ""} title={e.hidden ? "Show to visitors" : "Hide from visitors (stays on the NAS)"} onClick={() => adm.onHide(e)}>{e.hidden ? <IEye /> : <IEyeOff />}</span></span>}
       {e.kind === "video" && <span className="badge"><Play />{e.duration ? fmtDur(e.duration) : "VIDEO"}</span>}
       {e.kind === "raw" && <span className="badge">RAW</span>}
       {e.kind === "audio" && <span className="badge"><IAudio />{e.duration ? fmtDur(e.duration) : "AUDIO"}</span>}
+      {e.hidden && <span className="badge hidbadge">HIDDEN</span>}
       <span className="box" onClick={(ev) => { ev.stopPropagation(); onSelect(e.rel, ev); }}>{isSel && <Check />}</span>
       <span className="cap"><span className="n">{e.name}</span><span className="s">{fmtSize(e.size)}</span></span>
     </button>
@@ -509,6 +520,8 @@ function AudioCard({ e, src, autoPlay }: { e: Entry; src: string; autoPlay?: boo
   );
 }
 
+function IEye() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>; }
+function IEyeOff() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M3 3l18 18M10.6 6.3A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3.2 3.7M6.6 6.6C3.8 8.4 2 12 2 12s3.5 6 10 6c1.5 0 2.8-.3 4-.8" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></svg>; }
 function Check() { return <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true"><path d="M1.5 6l3 3 5-7" stroke="#0c0c0d" strokeWidth="1.8" fill="none" /></svg>; }
 function Play() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><rect x="2" y="6" width="13" height="12" rx="2" /><path d="M15 10l7-3v10l-7-3z" /></svg>; }
 function Sun() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" /></svg>; }

@@ -595,3 +595,18 @@ tr:hover .apencil { opacity: 1; } .apencil:hover { color: var(--blue2); }
 .tour-bub .skip:hover { color: var(--text); }
 .tour-bub .next { font-size: 10px; letter-spacing: .12em; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--amber); background: var(--amber); color: var(--bg); cursor: pointer; font-weight: 500; transition: transform .18s var(--spring), background .2s; }
 .tour-bub .next:hover { background: var(--amber2); } .tour-bub .next:active { transform: scale(.95); }
+
+/* hidden-from-visitors (admin only) */
+.tile.hid { opacity: .45; }
+.tile.hid:hover { opacity: .8; }
+.tile.hid img.ok { filter: grayscale(.6); }
+.badge.hidbadge { color: var(--blue2); border: 1px solid var(--blue-line); }
+.badge + .badge.hidbadge { top: 40px; }
+.tile:not(.folder) .ahover.file { position: absolute; top: 8px; right: 36px; display: flex; gap: 5px; z-index: 3; opacity: 0; transform: translateY(-4px); transition: opacity .2s, transform .3s var(--spring); }
+.tile.adm:not(.folder):hover .ahover.file, .tile.hid .ahover.file { opacity: 1; transform: none; }
+tr.hid td { opacity: .45; }
+.btn.blue { color: var(--blue2); border-color: var(--blue-line); background: #131b2c; }
+.btn.blue::before { background: var(--blue); }
+.btn.blue:hover { color: #0c0c0d; border-color: var(--blue); }
+.ahint { color: var(--blue2); }
+@media (max-width: 640px) { .tile:not(.folder) .ahover.file { opacity: 1; transform: none; } }

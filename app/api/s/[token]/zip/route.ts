@@ -3,7 +3,7 @@ import { PassThrough, Readable } from "node:stream";
 import path from "node:path";
 import archiver from "archiver";
 import { openShare } from "@/lib/access";
-import { statIn, walk } from "@/lib/files";
+import { statIn, walk, isHidden } from "@/lib/files";
 import { logEvent, mapSub, shareItems, isCollection } from "@/lib/shares";
 import { resolveSafe } from "@/lib/roots";
 
@@ -16,18 +16,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   const paths: string[] = Array.isArray(body.paths) && body.paths.length ? body.paths : [""];
 
   const files: { abs: string; rel: string; size: number }[] = [];
-  const addDir = (abs: string, base: string) => { for (const f of walk(abs)) files.push({ abs: f.abs, rel: path.posix.join(base, f.rel), size: f.size }); };
+  const addDir = (abs: string, base: string, real: string) => { for (const f of walk(abs, "", real)) files.push({ abs: f.abs, rel: path.posix.join(base, f.rel), size: f.size }); };
   for (const p of paths) {
     if (p === "" && isCollection(r.share)) {
-      for (const it of shareItems(r.share)) { const rr = resolveSafe(it.base); if (rr) addDir(rr.abs, it.name); }
+      for (const it of shareItems(r.share)) { const rr = resolveSafe(it.base); if (rr) addDir(rr.abs, it.name, rr.rel); }
       continue;
     }
     const m = mapSub(r.share, p);
     if (!m) continue;
     const s = statIn(m.base, m.rest);
     if (!s) continue;
-    if (s.st.isDirectory()) addDir(s.abs, p ? path.posix.basename(p) : "");
-    else files.push({ abs: s.abs, rel: path.posix.basename(p), size: s.st.size });
+    const real = m.rest ? `${m.base}/${m.rest}` : m.base;
+    if (s.st.isDirectory()) addDir(s.abs, p ? path.posix.basename(p) : "", real);
+    else if (!isHidden(real)) files.push({ abs: s.abs, rel: path.posix.basename(p), size: s.st.size });
   }
   if (!files.length) return NextResponse.json({ error: "empty" }, { status: 400 });
 
