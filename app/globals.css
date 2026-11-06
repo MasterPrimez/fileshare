@@ -543,3 +543,19 @@ tr:hover .apencil { opacity: 1; } .apencil:hover { color: var(--blue2); }
   .tile.folder .ahover { opacity: 1; transform: none; }
   .mbox { padding: 12px; }
 }
+
+/* New-share picker: columns + grid */
+.picker.pcols { display: flex; overflow-x: auto; overflow-y: hidden; }
+.pcol { flex: 0 0 190px; border-right: 1px solid var(--line); overflow-y: auto; height: 100%; }
+.pcol .p { border-bottom: 0; padding: 7px 10px; }
+.pcol .p .pn { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pcol .p .chev { color: var(--faint); }
+.pcol .p.cur { background: var(--panel2); color: var(--amber); } .pcol .p.cur .chev { color: var(--amber); }
+.picker.pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding: 8px; align-content: start; }
+.pcard { position: relative; aspect-ratio: 3/2; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); background: var(--panel2); padding: 0; cursor: pointer; text-align: left; color: var(--text); font-family: inherit; transition: transform .25s var(--spring), border-color .2s; }
+.pcard:hover { transform: translateY(-2px); border-color: var(--line2); }
+.pcard img { width: 100%; height: 100%; object-fit: cover; display: block; opacity: .75; }
+.pcard.picked { box-shadow: 0 0 0 2px var(--amber) inset; }
+.pcard.up { display: flex; align-items: center; justify-content: center; color: var(--dim); border-style: dashed; }
+.pcard-box { position: absolute; top: 8px; right: 8px; }
+.pcard-n { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 8px 7px; font-size: 11px; background: linear-gradient(transparent, rgba(12,12,13,.85)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

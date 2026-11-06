@@ -194,14 +194,29 @@ function NewShare({ onDone, initial }: { onDone: (token: string) => void; initia
   const [askName, setAskName] = useState(false);
   const [err, setErr] = useState("");
   const [big, setBig] = useState<AF | null>(null);
+  const [pview, setPview] = useState<"list" | "columns" | "grid">(() => (typeof window !== "undefined" && (localStorage.getItem("admin:picker") as "list" | "columns" | "grid")) || "columns");
+  const [levels, setLevels] = useState<Record<string, { name: string; rel: string; cover?: string | null }[]>>({});
+  useEffect(() => { try { localStorage.setItem("admin:picker", pview); } catch {} }, [pview]);
 
   const browse = useCallback(async (p: string) => {
     const r = await fetch(`/api/admin/browse?p=${encodeURIComponent(p)}`);
     if (!r.ok) return;
     const j = await r.json();
     setCur(j.path); setFolders(j.folders); setFiles(j.files || []); setCover(j.cover || null);
+    setLevels((l) => ({ ...l, [j.path]: j.folders }));
     if (p && !collRef.current.length) setName(p.split("/").pop() || "");
   }, []);
+  // columns: make sure every ancestor level is loaded
+  useEffect(() => {
+    if (pview !== "columns") return;
+    const parts = cur ? cur.split("/") : [];
+    [""].concat(parts.map((_, i) => parts.slice(0, i + 1).join("/"))).forEach(async (k) => {
+      if (levels[k] !== undefined) return;
+      const r = await fetch(`/api/admin/browse?p=${encodeURIComponent(k)}`); if (r.ok) { const j = await r.json(); setLevels((l) => ({ ...l, [k]: j.folders })); }
+    });
+  }, [pview, cur, levels]);
+  const tick = (f: { rel: string; name: string }) => { const on = coll.some((c) => c.rel === f.rel); const next = on ? coll.filter((c) => c.rel !== f.rel) : [...coll, { rel: f.rel, name: f.name }]; setColl(next); if (next.length) setName(next.length > 1 ? `${next[0].name} + ${next.length - 1}` : next[0].name); };
+  const Box = ({ f }: { f: { rel: string; name: string } }) => { const on = coll.some((c) => c.rel === f.rel); return <span className={`pbox ${on ? "on" : ""}`} role="checkbox" aria-checked={on} aria-label={`Add ${f.name} to collection`} onClick={(e) => { e.stopPropagation(); tick(f); }}>{on && <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true"><path d="M1.5 6l3 3 5-7" stroke="#0c0c0d" strokeWidth="1.8" fill="none" /></svg>}</span>; };
   useEffect(() => { browse(initial || ""); if (initial) { setColl([{ rel: initial, name: initial.split("/").pop() || initial }]); setName(initial.split("/").pop() || ""); } }, []); // eslint-disable-line
 
   const up = cur.includes("/") ? cur.slice(0, cur.lastIndexOf("/")) : "";
@@ -220,17 +235,49 @@ function NewShare({ onDone, initial }: { onDone: (token: string) => void; initia
     <h2 className="h">NEW SHARE</h2>
     <div className="newshare">
       <div className="form" style={{ maxWidth: "none" }}>
-        <div className="field"><label>FOLDER</label>
+        <div className="field">
+          <div className="row" style={{ justifyContent: "space-between" }}><label>FOLDER</label>
+            <div className="seg" role="tablist" aria-label="Picker view">
+              <button className={pview === "list" ? "on" : ""} onClick={() => setPview("list")} title="List" aria-label="List"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="2" width="14" height="2" rx="1" /><rect x="1" y="7" width="14" height="2" rx="1" /><rect x="1" y="12" width="14" height="2" rx="1" /></svg></button>
+              <button className={pview === "columns" ? "on" : ""} onClick={() => setPview("columns")} title="Columns" aria-label="Columns"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><rect x="1" y="2" width="14" height="12" rx="1.5" /><path d="M6 2v12M11 2v12" /></svg></button>
+              <button className={pview === "grid" ? "on" : ""} onClick={() => setPview("grid")} title="Grid" aria-label="Grid"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="1" width="6" height="6" rx="1" /><rect x="9" y="1" width="6" height="6" rx="1" /><rect x="1" y="9" width="6" height="6" rx="1" /><rect x="9" y="9" width="6" height="6" rx="1" /></svg></button>
+            </div>
+          </div>
           <div className="crumbs"><a href="#" onClick={(e) => { e.preventDefault(); browse(""); }}>ROOTS</a>{cur.split("/").filter(Boolean).map((c, i, a) => <span key={i} style={{ display: "contents" }}><span>›</span><a href="#" onClick={(e) => { e.preventDefault(); browse(a.slice(0, i + 1).join("/")); }}>{c.toUpperCase()}</a></span>)}</div>
-          <div className="picker tall">
+          {pview === "list" && <div className="picker tall">
             {cur && <div className="p" onClick={() => browse(up)}>↑ ..</div>}
             {folders.map((f) => { const on = coll.some((c) => c.rel === f.rel); return (
               <div key={f.rel} className={`p ${on ? "picked" : ""}`} onClick={() => browse(f.rel)}>
-                <span className={`pbox ${on ? "on" : ""}`} role="checkbox" aria-checked={on} aria-label={`Add ${f.name} to collection`} onClick={(e) => { e.stopPropagation(); const next = on ? coll.filter((c) => c.rel !== f.rel) : [...coll, { rel: f.rel, name: f.name }]; setColl(next); if (next.length) setName(next.length > 1 ? `${next[0].name} + ${next.length - 1}` : next[0].name); }}>{on && <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true"><path d="M1.5 6l3 3 5-7" stroke="#0c0c0d" strokeWidth="1.8" fill="none" /></svg>}</span>
+                <Box f={f} />
                 {f.cover ? <img className="pcover" src={`/api/admin/thumb?p=${encodeURIComponent(f.cover)}&w=120`} alt="" /> : <span className="pcover" />}{f.name}
               </div>); })}
             {!folders.length && cur && <div className="p" style={{ color: "var(--dim)" }}>no subfolders</div>}
-          </div>
+          </div>}
+          {pview === "columns" && (() => {
+            const parts = cur ? cur.split("/") : [];
+            const keys = [""].concat(parts.map((_, i) => parts.slice(0, i + 1).join("/")));
+            return <div className="picker tall pcols">
+              {keys.map((k, li) => { const ents = levels[k]; const next = keys[li + 1]; if (ents && !ents.length && li > 0) return null; return (
+                <div className="pcol" key={k || "__root"}>
+                  {!ents && <div className="p" style={{ color: "var(--dim)" }}>…</div>}
+                  {ents && ents.map((f) => { const on = coll.some((c) => c.rel === f.rel); return (
+                    <div key={f.rel} className={`p ${on ? "picked" : ""} ${f.rel === next || f.rel === cur ? "cur" : ""}`} onClick={() => browse(f.rel)} title={f.name}>
+                      <Box f={f} />{f.cover ? <img className="pcover" src={`/api/admin/thumb?p=${encodeURIComponent(f.cover)}&w=120`} alt="" /> : <span className="pcover" />}<span className="pn">{f.name}</span><span className="chev">›</span>
+                    </div>); })}
+                </div>); })}
+              {cur && levels[cur] && !levels[cur].length && <div className="pcol"><div className="p" style={{ color: "var(--dim)" }}>no subfolders</div></div>}
+            </div>;
+          })()}
+          {pview === "grid" && <div className="picker tall pgrid">
+            {cur && <button className="pcard up" onClick={() => browse(up)}>↑ ..</button>}
+            {folders.map((f) => { const on = coll.some((c) => c.rel === f.rel); return (
+              <button key={f.rel} className={`pcard ${on ? "picked" : ""}`} onClick={() => browse(f.rel)} title={f.name}>
+                {f.cover ? <img src={`/api/admin/thumb?p=${encodeURIComponent(f.cover)}&w=300`} alt="" loading="lazy" /> : <span className="pcard-empty" />}
+                <span className="pcard-box"><Box f={f} /></span>
+                <span className="pcard-n">{f.name}</span>
+              </button>); })}
+            {!folders.length && cur && <div className="p" style={{ color: "var(--dim)" }}>no subfolders</div>}
+          </div>}
           <span className="sub">{cur ? `SELECTED: ${cur} · ${files.length} FILES · ${fmtSz(total)}` : "PICK A ROOT"}</span>
           <div className="row">
             <button className="btn sm" disabled={!cur || coll.some((c) => c.rel === cur)} onClick={() => { const next = [...coll, { rel: cur, name: cur.split("/").pop() || cur }]; setColl(next); setName(next.length > 1 ? `${next[0].name} + ${next.length - 1}` : next[0].name); }}>+ ADD TO COLLECTION</button>
