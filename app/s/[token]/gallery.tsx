@@ -90,14 +90,15 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
     const u = new URL(location.href);
     if (p) u.searchParams.set("p", p); else u.searchParams.delete("p");
     u.searchParams.delete("f");
-    history.pushState({ p }, "", u);
+    history.pushState({ ...history.state, p, f: undefined }, "", u);
     setOpen(null); setPath(p);
     window.scrollTo(0, 0);
   }, []);
   useEffect(() => {
     mounted.current = true;
+    try { history.scrollRestoration = "manual"; } catch {}
     const { p, f } = readUrl();
-    history.replaceState({ p, f }, "", location.href);
+    history.replaceState({ ...history.state, p, f }, "", location.href);
     if (f) setPendingOpen(f);
     if (p) setPath(p); else load("");
     const pop = () => { const { p, f } = readUrl(); setPath((cur) => { if (cur !== p) return p; return cur; }); if (f) setPendingOpen(f); else setOpen(null); };
@@ -144,11 +145,25 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
   const openLb = useCallback((i: number) => {
     const m = media[i]; if (!m) return;
     const u = new URL(location.href); u.searchParams.set("f", m.rel);
-    history.pushState({ p: path, f: m.rel }, "", u);
+    history.pushState({ ...history.state, p: path, f: m.rel }, "", u);
     setOpen(i);
   }, [media, path]);
   const closeLb = useCallback(() => { if (history.state?.f) history.back(); else setOpen(null); }, []);
-  const stepLb = useCallback((i: number) => { const m = media[i]; if (!m) return; const u = new URL(location.href); u.searchParams.set("f", m.rel); history.replaceState({ p: path, f: m.rel }, "", u); setOpen(i); }, [media, path]);
+  // when the lightbox closes, bring the page to the photo you were on (instead of the browser's old scroll spot)
+  const lastOpen = useRef<string | null>(null);
+  useEffect(() => { if (open !== null && media[open]) lastOpen.current = media[open].rel; }, [open, media]);
+  useEffect(() => {
+    try { history.scrollRestoration = "manual"; } catch {}
+    if (open !== null || !lastOpen.current) return;
+    const rel = lastOpen.current; lastOpen.current = null;
+    const i = media.findIndex((m) => m.rel === rel); if (i >= 0) setGalIdx(i);
+    // after the browser has finished any history scroll restore
+    setTimeout(() => {
+      const el = [...document.querySelectorAll<HTMLElement>(".tile, .flist tr, .mi, .strip .st")].find((n) => n.getAttribute("aria-label") === media[i]?.name || n.getAttribute("title") === media[i]?.name || n.querySelector(".nm, .mn")?.textContent === media[i]?.name);
+      el?.scrollIntoView({ block: "center" });
+    }, 40);
+  }, [open, media]);
+  const stepLb = useCallback((i: number) => { const m = media[i]; if (!m) return; const u = new URL(location.href); u.searchParams.set("f", m.rel); history.replaceState({ ...history.state, p: path, f: m.rel }, "", u); setOpen(i); }, [media, path]);
 
   // preview a file clicked in an ancestor column once its folder is loaded
   useEffect(() => {
