@@ -32,6 +32,8 @@ export type Entry = {
   mtime: number;
   count?: number;
   cover?: string | null; // for folders: rel (within the same listing base) of the cover image
+  alias?: string | null; // folders: display name override (name already reflects it)
+  real?: string; // admin only: root-relative path
 };
 
 export function kindOf(name: string): Entry["kind"] {
@@ -63,9 +65,10 @@ export function listDir(shareRoot: string, sub: string): Entry[] | null {
         const pick = set && names.includes(set) ? set : names.filter((n) => kindOf(n) === "image").sort()[0];
         if (pick) cover = path.posix.join(rel, pick);
       } catch {}
-      out.push({ name: d.name, rel, kind: "folder", size: 0, mtime: st.mtimeMs, count, cover });
+      const alias = getAlias(path.posix.join(r.rel, d.name));
+      out.push({ name: alias || d.name, rel, kind: "folder", size: 0, mtime: st.mtimeMs, count, cover, alias, real: path.posix.join(r.rel, d.name) });
     } else {
-      out.push({ name: d.name, rel, kind: kindOf(d.name), size: st.size, mtime: st.mtimeMs });
+      out.push({ name: d.name, rel, kind: kindOf(d.name), size: st.size, mtime: st.mtimeMs, real: path.posix.join(r.rel, d.name) });
     }
   }
   out.sort((a, b) => (a.kind === "folder") === (b.kind === "folder") ? a.name.localeCompare(b.name) : a.kind === "folder" ? -1 : 1);
@@ -165,7 +168,36 @@ export function listCollection(items: { name: string; base: string }[]): Entry[]
       const pick = set && names.includes(set) ? set : names.filter((n) => kindOf(n) === "image").sort()[0];
       if (pick) cover = path.posix.join(it.name, pick);
     } catch {}
-    out.push({ name: it.name, rel: it.name, kind: "folder", size: 0, mtime, count, cover });
+    const alias = getAlias(r.rel);
+    out.push({ name: alias || (it.base.includes("/") ? it.name : r.root.label), rel: it.name, kind: "folder", size: 0, mtime, count, cover, alias, real: r.rel });
   }
   return out;
+}
+
+/** Display-name overrides for folders, keyed by root-relative path. Never touches disk. */
+export function getAlias(folderRel: string): string | null {
+  const r = db.prepare("SELECT name FROM aliases WHERE path = ?").get(folderRel) as { name: string } | undefined;
+  return r?.name ?? null;
+}
+export function setAlias(folderRel: string, name: string | null) {
+  const n = (name || "").trim();
+  if (n) db.prepare("INSERT INTO aliases (path, name) VALUES (?, ?) ON CONFLICT(path) DO UPDATE SET name = excluded.name").run(folderRel, n);
+  else db.prepare("DELETE FROM aliases WHERE path = ?").run(folderRel);
+}
+/** Strip admin-only fields before sending to a visitor. */
+export function publicEntries<T extends { real?: string; alias?: string | null }>(list: T[]): T[] {
+  return list.map((e) => { const { real: _r, alias: _a, ...rest } = e; return rest as T; });
+}
+
+/** First usable cover for a folder: set cover, else first photo, else first photo in a subfolder (2 deep). */
+export function coverFor(folderRel: string, depth = 0): string | null {
+  const r = resolveSafe(folderRel); if (!r || !fs.existsSync(r.abs)) return null;
+  try {
+    const names = fs.readdirSync(r.abs).filter((n) => !n.startsWith(".") && n !== "@eaDir");
+    const set = getCover(r.rel);
+    const pick = set && names.includes(set) ? set : names.filter((n) => kindOf(n) === "image").sort()[0];
+    if (pick) return path.posix.join(r.rel, pick);
+    if (depth < 2) for (const n of names.sort()) { try { if (fs.statSync(path.join(r.abs, n)).isDirectory()) { const c = coverFor(path.posix.join(r.rel, n), depth + 1); if (c) return c; } } catch {} }
+  } catch {}
+  return null;
 }

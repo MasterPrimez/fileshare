@@ -1,8 +1,12 @@
 "use client";
 import Brand from "../../brand";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import AdminStrip from "./adminstrip";
+import { CoverModal } from "../../admin/pickers";
 
-type Entry = { name: string; rel: string; kind: "folder" | "image" | "video" | "raw" | "audio" | "file"; size: number; mtime: number; count?: number; duration?: number | null; cover?: string | null };
+type Entry = { name: string; rel: string; kind: "folder" | "image" | "video" | "raw" | "audio" | "file"; size: number; mtime: number; count?: number; duration?: number | null; cover?: string | null; alias?: string | null; real?: string };
+type Crumb = { rel: string; name: string };
+const readUrl = () => { const u = new URL(location.href); return { p: u.searchParams.get("p") || "", f: u.searchParams.get("f") }; };
 type View = "grid" | "list" | "columns" | "gallery";
 type Filter = "photo" | "video" | "audio" | "other";
 const filterOf = (k: Entry["kind"]): Filter | null => k === "image" || k === "raw" ? "photo" : k === "video" ? "video" : k === "audio" ? "audio" : k === "file" ? "other" : null;
@@ -18,8 +22,15 @@ function fmtDate(ms: number) { return new Date(ms).toLocaleDateString("en-US", {
 function fmtDT(ms: number) { return new Date(ms).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }); }
 const ls = { get: (k: string) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k: string, v: string) => { try { localStorage.setItem(k, v); } catch {} } };
 
-export default function Gallery({ token, name, mode, expiresAt }: { token: string; name: string; mode: "view" | "edit"; expiresAt: number | null }) {
+export default function Gallery({ token, name, mode, expiresAt, admin, shareId }: { token: string; name: string; mode: "view" | "edit"; expiresAt: number | null; admin?: boolean; shareId?: string }) {
   const [path, setPath] = useState("");
+  const [crumbInfo, setCrumbInfo] = useState<Crumb[]>([]);
+  const [real, setReal] = useState<string | null>(null);
+  const [coverFor, setCoverFor] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [pendingOpen, setPendingOpen] = useState<string | null>(null);
+  const mounted = useRef(false);
+  const isLib = token === "library";
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [isColl, setIsColl] = useState(false);
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -54,15 +65,36 @@ export default function Gallery({ token, name, mode, expiresAt }: { token: strin
   useEffect(() => { ls.set("share:view", view); }, [view]);
   useEffect(() => { ls.set("share:size", String(size)); }, [size]);
 
-  const load = useCallback(async (p: string) => {
-    setEntries(null);
+  const load = useCallback(async (p: string, quiet = false) => {
+    if (!quiet) setEntries(null);
     const r = await fetch(`/api/s/${token}/list?p=${encodeURIComponent(p)}`);
     if (!r.ok) { if (r.status === 401) location.reload(); return; }
     const j = await r.json();
-    setEntries(j.entries); setIsColl(!!j.share?.collection);
-    setSel(new Set()); setAnchor(null); setGalIdx(0);
+    setEntries(j.entries); setIsColl(!!j.share?.collection); setCrumbInfo(j.crumbs || []); setReal(j.real ?? null);
+    if (!quiet) { setSel(new Set()); setAnchor(null); setGalIdx(0); }
   }, [token]);
-  useEffect(() => { load(path); }, [path, load]);
+  useEffect(() => { if (mounted.current) load(path); }, [path, load]);
+  const reload = useCallback(() => load(path, true), [load, path]);
+
+  /** Navigate to a folder: URL + state, so browser back/forward work. */
+  const nav = useCallback((p: string) => {
+    const u = new URL(location.href);
+    if (p) u.searchParams.set("p", p); else u.searchParams.delete("p");
+    u.searchParams.delete("f");
+    history.pushState({ p }, "", u);
+    setOpen(null); setPath(p);
+    window.scrollTo(0, 0);
+  }, []);
+  useEffect(() => {
+    mounted.current = true;
+    const { p, f } = readUrl();
+    history.replaceState({ p, f }, "", location.href);
+    if (f) setPendingOpen(f);
+    if (p) setPath(p); else load("");
+    const pop = () => { const { p, f } = readUrl(); setPath((cur) => { if (cur !== p) return p; return cur; }); if (f) setPendingOpen(f); else setOpen(null); };
+    window.addEventListener("popstate", pop);
+    return () => window.removeEventListener("popstate", pop);
+  }, [load]);
 
   // columns view: fetch every ancestor level (cached)
   useEffect(() => {
@@ -92,6 +124,22 @@ export default function Gallery({ token, name, mode, expiresAt }: { token: strin
   const nVid = files.filter((e) => e.kind === "video").length;
   const nAud = files.filter((e) => e.kind === "audio").length;
   const newest = files.reduce((a, e) => Math.max(a, e.mtime), 0);
+
+  // deep link / history: open the lightbox on a file once its folder is loaded
+  useEffect(() => {
+    if (!pendingOpen || !entries) return;
+    const i = media.findIndex((m) => m.rel === pendingOpen);
+    setPendingOpen(null);
+    if (i >= 0) setOpen(i);
+  }, [entries, pendingOpen, media]);
+  const openLb = useCallback((i: number) => {
+    const m = media[i]; if (!m) return;
+    const u = new URL(location.href); u.searchParams.set("f", m.rel);
+    history.pushState({ p: path, f: m.rel }, "", u);
+    setOpen(i);
+  }, [media, path]);
+  const closeLb = useCallback(() => { if (history.state?.f) history.back(); else setOpen(null); }, []);
+  const stepLb = useCallback((i: number) => { const m = media[i]; if (!m) return; const u = new URL(location.href); u.searchParams.set("f", m.rel); history.replaceState({ p: path, f: m.rel }, "", u); setOpen(i); }, [media, path]);
 
   // preview a file clicked in an ancestor column once its folder is loaded
   useEffect(() => {
@@ -157,22 +205,22 @@ export default function Gallery({ token, name, mode, expiresAt }: { token: strin
     const k = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "a" && open === null) { e.preventDefault(); setSel(new Set(all.map((x) => x.rel))); return; }
       if (open !== null) {
-        if (e.key === "Escape") setOpen(null);
-        if (e.key === "ArrowRight") setOpen((o) => (o === null ? null : Math.min(media.length - 1, o + 1)));
-        if (e.key === "ArrowLeft") setOpen((o) => (o === null ? null : Math.max(0, o - 1)));
+        if (e.key === "Escape") closeLb();
+        if (e.key === "ArrowRight") stepLb(Math.min(media.length - 1, open + 1));
+        if (e.key === "ArrowLeft") stepLb(Math.max(0, open - 1));
       } else if (view === "gallery") {
         if (e.key === "ArrowRight") setGalIdx((i) => Math.min(media.length - 1, i + 1));
         if (e.key === "ArrowLeft") setGalIdx((i) => Math.max(0, i - 1));
       } else if (view === "columns") {
         if (e.key === "ArrowDown") { e.preventDefault(); setGalIdx((i) => Math.min(media.length - 1, i + 1)); }
         if (e.key === "ArrowUp") { e.preventDefault(); setGalIdx((i) => Math.max(0, i - 1)); }
-        if (e.key === "Enter" && media.length) setOpen(galIdx);
-        if (e.key === " " && media.length) { e.preventDefault(); setOpen((o) => (o === null ? galIdx : null)); }
+        if (e.key === "Enter" && media.length) openLb(galIdx);
+        if (e.key === " " && media.length) { e.preventDefault(); if (open === null) openLb(galIdx); else closeLb(); }
       }
     };
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
-  }, [open, media.length, view, all, galIdx]);
+  }, [open, media.length, view, all, galIdx, openLb, closeLb, stepLb]);
 
   const cur = open !== null ? media[open] : null;
   useEffect(() => { if (view === "columns") document.querySelector(".mi.cur")?.scrollIntoView({ block: "nearest" }); }, [galIdx, view]);
@@ -180,18 +228,37 @@ export default function Gallery({ token, name, mode, expiresAt }: { token: strin
   const fileUrl = (rel: string, dl = false) => `/api/s/${token}/file?p=${encodeURIComponent(rel)}${dl ? "&dl=1" : ""}`;
 
   function openEntry(e: Entry, ev: React.MouseEvent) {
-    if (e.kind === "folder") { setPath(e.rel); return; }
+    if (e.kind === "folder") { nav(e.rel); return; }
     if (ev.shiftKey || ev.metaKey || ev.ctrlKey) { select(e.rel, ev); return; }
     const mi = media.indexOf(e);
-    if (mi >= 0) { if (view === "gallery") setGalIdx(mi); else setOpen(mi); } else select(e.rel, ev);
+    if (mi >= 0) { if (view === "gallery") setGalIdx(mi); else openLb(mi); } else select(e.rel, ev);
   }
 
   const gal = media[galIdx];
 
+  // ---- admin-only actions (blue layer) ----
+  async function renameFolder(e: Entry, newName: string) {
+    setRenaming(null);
+    if (!e.real || newName === e.name) return;
+    const r = await fetch("/api/admin/alias", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: e.real, name: newName === (e.real.split("/").pop() || "") ? null : newName }) });
+    say(r.ok ? "RENAMED" : "RENAME FAILED"); setLevels({}); reload();
+  }
+  async function removeFolder(e: Entry) {
+    if (!shareId || !e.real || !confirm(`Remove "${e.name}" from this share? The folder stays on the NAS.`)) return;
+    const d = await fetch(`/api/admin/shares/${shareId}`); if (!d.ok) return;
+    const folders: string[] = (await d.json()).share.folders;
+    const r = await fetch(`/api/admin/shares/${shareId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ paths: folders.filter((f) => f !== e.real) }) });
+    say(r.ok ? "REMOVED" : "FAILED"); setLevels({}); reload();
+  }
+  const canRemove = !!admin && !isLib && isColl && !path && folders.length > 1;
+  const canRename = (e: Entry) => !!admin && e.kind === "folder" && !!e.real && e.real.includes("/");
+  const adminTile = admin ? { renaming, onCover: (e: Entry) => e.real && setCoverFor(e.real), onRenameStart: (e: Entry) => canRename(e) && setRenaming(e.rel), onRename: renameFolder, onRemove: canRemove ? removeFolder : undefined, canRename } : undefined;
+
   return (
     <div className="page">
+      {admin && shareId && <AdminStrip token={token} shareId={shareId} real={real} onChanged={() => { setLevels({}); reload(); }} />}
       <header className="hdr">
-        <Brand tag="SHARE" />
+        <span onClick={(e) => { if (!admin) { e.preventDefault(); nav(""); } }} style={{ display: "contents" }}><Brand tag="SHARE" href={admin ? "/admin" : `/s/${token}`} /></span>
         <div style={{ flex: "1 1 200px" }} />
         <span className={`pill ${canEdit ? "" : "on"}`} style={{ cursor: "default" }}>{canEdit ? "EDIT ACCESS" : "READ ONLY"}</span>
         <div className="meta">
@@ -207,15 +274,16 @@ export default function Gallery({ token, name, mode, expiresAt }: { token: strin
       <div className="bar">
         <div className="titleblock">
           <div className="titlerow">
-            <h1 className="title">{(crumbs.length ? crumbs[crumbs.length - 1] : name).toUpperCase()}</h1>
+            <h1 className="title">{(crumbs.length ? (crumbInfo[crumbs.length - 1]?.name || crumbs[crumbs.length - 1]) : name).toUpperCase()}</h1>
             {entries && <span className="sub">{isColl && !path ? `${folders.length} FOLDERS` : `${files.length} FILES`}{nImg ? ` · ${nImg} PHOTOS` : ""}{nVid ? ` · ${nVid} VIDEOS` : ""}{nAud ? ` · ${nAud} AUDIO` : ""}{newest ? ` · ${fmtDate(newest)}` : ""}</span>}
           </div>
           <nav className="crumbs">
-            <a href="#" onClick={(e) => { e.preventDefault(); setPath(""); }}>{name.toUpperCase()}</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); nav(""); }}>{name.toUpperCase()}</a>
             {crumbs.map((c, i) => {
               const to = crumbs.slice(0, i + 1).join("/");
               const last = i === crumbs.length - 1;
-              return <span key={to} style={{ display: "contents" }}><span>›</span>{last ? <span className="cur">{c.toUpperCase()}</span> : <a href="#" onClick={(e) => { e.preventDefault(); setPath(to); }}>{c.toUpperCase()}</a>}</span>;
+              const label = (crumbInfo[i]?.name || c).toUpperCase();
+              return <span key={to} style={{ display: "contents" }}><span>›</span>{last ? <span className="cur">{label}</span> : <a href="#" onClick={(e) => { e.preventDefault(); nav(to); }}>{label}</a>}</span>;
             })}
           </nav>
         </div>
@@ -261,7 +329,7 @@ export default function Gallery({ token, name, mode, expiresAt }: { token: strin
 
         {view === "grid" && (
           <div className="tiles" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${size}px, 1fr))`, ["--tile" as string]: `${size}px` }}>
-            {all.map((e) => <Tile key={e.rel} e={e} isSel={sel.has(e.rel)} thumb={thumbUrl(e.rel)} onOpen={openEntry} onSelect={select} />)}
+            {all.map((e) => <Tile key={e.rel} e={e} isSel={sel.has(e.rel)} thumb={thumbUrl(e.rel)} onOpen={openEntry} onSelect={select} adm={adminTile} />)}
           </div>
         )}
 
@@ -276,7 +344,7 @@ export default function Gallery({ token, name, mode, expiresAt }: { token: strin
                     <td><span className="box" onClick={(ev) => { ev.stopPropagation(); select(e.rel, ev); }}>{isSel && <Check />}</span></td>
                     <td>{e.kind === "folder" ? <span className="mini folder"><svg width="18" height="14" viewBox="0 0 28 22" aria-hidden="true"><path d="M1 4a2 2 0 0 1 2-2h7l3 3h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z" fill="none" stroke="var(--amber)" strokeWidth="1.5" /></svg></span>
                       : (e.kind === "image" || e.kind === "video" || e.kind === "raw") ? <span className="miniwrap"><img className="mini" src={thumbUrl(e.rel, 120)} alt="" loading="lazy" />{e.kind === "video" && <span className="cam"><Play /></span>}</span> : <span className="mini">{(e.name.split(".").pop() || "").toUpperCase()}</span>}</td>
-                    <td className="nm">{e.name}</td>
+                    <td className="nm">{adminTile && renaming === e.rel ? <RenameBox name={e.name} onDone={(n) => renameFolder(e, n)} /> : <>{e.name}{adminTile && canRename(e) && <span className="apencil" title="Rename (display only)" onClick={(ev) => { ev.stopPropagation(); setRenaming(e.rel); }}>✎</span>}</>}</td>
                     <td className="dim">{e.kind === "folder" ? `FOLDER · ${e.count}` : (e.kind === "video" || e.kind === "audio") && e.duration ? `${e.kind.toUpperCase()} · ${fmtDur(e.duration)}` : e.kind.toUpperCase()}</td>
                     <td className="dim">{e.kind === "folder" ? "—" : fmtSize(e.size)}</td>
                     <td className="dim">{fmtDT(e.mtime)}</td>
@@ -305,13 +373,13 @@ export default function Gallery({ token, name, mode, expiresAt }: { token: strin
                       return (
                         <div key={e.rel} className={`mi ${isPath ? "path" : ""} ${isCur ? "cur" : ""} ${isSel ? "sel" : ""}`}
                           onClick={(ev) => {
-                            if (e.kind === "folder") { setPath(e.rel); return; }
+                            if (e.kind === "folder") { nav(e.rel); return; }
                             if (ev.shiftKey || ev.metaKey || ev.ctrlKey) { if (k === path) select(e.rel, ev); return; }
                             if (k === path) { const mi = media.indexOf(e); if (mi >= 0) setGalIdx(mi); else select(e.rel, ev); }
-                            else { setPendingPreview(e.rel); setPath(k); }
+                            else { setPendingPreview(e.rel); nav(k); }
                           }}
                           onContextMenu={(ev) => { ev.preventDefault(); if (k === path) select(e.rel, ev); }}
-                          onDoubleClick={() => { if (k === path && e.kind !== "folder") { const mi = media.indexOf(e); if (mi >= 0) setOpen(mi); } }}>
+                          onDoubleClick={() => { if (k === path && e.kind !== "folder") { const mi = media.indexOf(e); if (mi >= 0) openLb(mi); } }}>
                           {e.kind === "folder"
                             ? (e.cover ? <img className="fic" src={thumbUrl(e.cover, 120)} alt="" loading="lazy" /> : <svg className="fic" width="16" height="13" viewBox="0 0 28 22" aria-hidden="true"><path d="M1 4a2 2 0 0 1 2-2h7l3 3h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z" fill="currentColor" /></svg>)
                             : (e.kind === "image" || e.kind === "video" || e.kind === "raw") ? <span className="ficwrap"><img className="fic" src={thumbUrl(e.rel, 120)} alt="" loading="lazy" />{e.kind === "video" && <span className="cam xs"><Play /></span>}</span> : <span className="fic doc" />}
@@ -325,7 +393,7 @@ export default function Gallery({ token, name, mode, expiresAt }: { token: strin
               })}
               <div className="mprev">
                 {gal ? <>
-                  {gal.kind === "video" ? <video key={gal.rel} src={fileUrl(gal.rel)} controls playsInline /> : gal.kind === "audio" ? <AudioCard e={gal} src={fileUrl(gal.rel)} /> : <img key={gal.rel} src={thumbUrl(gal.rel, 800)} alt={gal.name} onClick={() => setOpen(galIdx)} style={{ cursor: "zoom-in" }} />}
+                  {gal.kind === "video" ? <video key={gal.rel} src={fileUrl(gal.rel)} controls playsInline /> : gal.kind === "audio" ? <AudioCard e={gal} src={fileUrl(gal.rel)} /> : <img key={gal.rel} src={thumbUrl(gal.rel, 800)} alt={gal.name} onClick={() => openLb(galIdx)} style={{ cursor: "zoom-in" }} />}
                   <div className="minfo">
                     <b>{gal.name}</b>
                     <span>{gal.kind.toUpperCase()}{gal.kind === "video" && gal.duration ? ` · ${fmtDur(gal.duration)}` : ""}</span>
@@ -341,14 +409,14 @@ export default function Gallery({ token, name, mode, expiresAt }: { token: strin
 
         {view === "gallery" && (
           <div className="galview">
-            <div className="stage" onClick={() => gal && setOpen(galIdx)}>
+            <div className="stage" onClick={() => gal && openLb(galIdx)}>
               {gal ? (gal.kind === "video" ? <video key={gal.rel} src={fileUrl(gal.rel)} controls playsInline onClick={(e) => e.stopPropagation()} /> : gal.kind === "audio" ? <span onClick={(e) => e.stopPropagation()}><AudioCard e={gal} src={fileUrl(gal.rel)} /></span> : <img key={gal.rel} src={thumbUrl(gal.rel, 1600)} alt={gal.name} />) : <div className="sub">{folders.length ? "OPEN A FOLDER BELOW" : "NO MEDIA HERE"}</div>}
               {galIdx > 0 && <button className="nav l" onClick={(e) => { e.stopPropagation(); setGalIdx(galIdx - 1); }} aria-label="Previous">‹</button>}
               {galIdx < media.length - 1 && <button className="nav r" onClick={(e) => { e.stopPropagation(); setGalIdx(galIdx + 1); }} aria-label="Next">›</button>}
             </div>
             {gal && <div className="info"><b>{gal.name}</b><span>{galIdx + 1} / {media.length} · {fmtSize(gal.size)}</span><a className="btn sm" href={fileUrl(gal.rel, true)}>DOWNLOAD</a></div>}
             <div className="strip" style={{ height: Math.max(72, Math.round(size * 0.45)) }}>
-              {folders.map((f) => <button key={f.rel} className="st folder" onClick={() => setPath(f.rel)} title={f.name}>{f.cover && <img src={thumbUrl(f.cover, 240)} alt="" loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .45 }} />}<svg width="22" height="18" viewBox="0 0 28 22" aria-hidden="true"><path d="M1 4a2 2 0 0 1 2-2h7l3 3h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z" fill="none" stroke="var(--amber)" strokeWidth="1.5" /></svg><span>{f.name}</span></button>)}
+              {folders.map((f) => <button key={f.rel} className="st folder" onClick={() => nav(f.rel)} title={f.name}>{f.cover && <img src={thumbUrl(f.cover, 240)} alt="" loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .45 }} />}<svg width="22" height="18" viewBox="0 0 28 22" aria-hidden="true"><path d="M1 4a2 2 0 0 1 2-2h7l3 3h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z" fill="none" stroke="var(--amber)" strokeWidth="1.5" /></svg><span>{f.name}</span></button>)}
               {media.map((m, i) => <button key={m.rel} className={`st ${i === galIdx ? "cur" : ""} ${sel.has(m.rel) ? "sel" : ""}`} onClick={(ev) => { if (ev.shiftKey || ev.metaKey || ev.ctrlKey) select(m.rel, ev); else setGalIdx(i); }} onContextMenu={(ev) => { ev.preventDefault(); select(m.rel, ev); }} title={m.name}>{m.kind === "audio" ? <span className="noimg" style={{ fontSize: 14 }}><IAudio /></span> : <img src={thumbUrl(m.rel, 240)} alt="" loading="lazy" />}{m.kind === "video" && <span className="cam st-cam"><Play /></span>}{sel.has(m.rel) && <span className="box"><Check /></span>}</button>)}
             </div>
           </div>
@@ -360,12 +428,12 @@ export default function Gallery({ token, name, mode, expiresAt }: { token: strin
       </footer>
 
       {cur && (
-        <div className="lb" onClick={() => setOpen(null)}>
+        <div className="lb" onClick={closeLb}>
           <div className="top" onClick={(e) => e.stopPropagation()}>
             <span>{open! + 1} / {media.length} — {cur.name}</span>
             <span style={{ display: "flex", gap: 8 }}>
               <a className="btn sm" href={fileUrl(cur.rel, true)}>DOWNLOAD</a>
-              <button className="btn sm" onClick={() => setOpen(null)}>CLOSE</button>
+              <button className="btn sm" onClick={closeLb}>CLOSE</button>
             </span>
           </div>
           <div className="stage">
@@ -374,26 +442,40 @@ export default function Gallery({ token, name, mode, expiresAt }: { token: strin
               : cur.kind === "audio" ? <AudioCard e={cur} src={fileUrl(cur.rel)} autoPlay />
               : <img key={cur.rel} src={thumbUrl(cur.rel, 2000)} alt={cur.name} />}
           </div>
-          {open! > 0 && <button className="nav l" onClick={(e) => { e.stopPropagation(); setOpen(open! - 1); }} aria-label="Previous">‹</button>}
-          {open! < media.length - 1 && <button className="nav r" onClick={(e) => { e.stopPropagation(); setOpen(open! + 1); }} aria-label="Next">›</button>}
+          {open! > 0 && <button className="nav l" onClick={(e) => { e.stopPropagation(); stepLb(open! - 1); }} aria-label="Previous">‹</button>}
+          {open! < media.length - 1 && <button className="nav r" onClick={(e) => { e.stopPropagation(); stepLb(open! + 1); }} aria-label="Next">›</button>}
         </div>
       )}
 
       {(toast || (busy && busy !== "zip")) && <div className="toast">{toast || busy.toUpperCase()}</div>}
+      {coverFor && <CoverModal folder={coverFor} onClose={(changed) => { setCoverFor(null); if (changed) { setLevels({}); reload(); } }} />}
     </div>
   );
 }
 
-function Tile({ e, isSel, thumb, onOpen, onSelect }: { e: Entry; isSel: boolean; thumb: string; onOpen: (e: Entry, ev: React.MouseEvent) => void; onSelect: (rel: string, ev: React.MouseEvent) => void }) {
+type AdmTile = { renaming: string | null; onCover: (e: Entry) => void; onRenameStart: (e: Entry) => void; onRename: (e: Entry, name: string) => void; onRemove?: (e: Entry) => void; canRename: (e: Entry) => boolean };
+
+function RenameBox({ name, onDone }: { name: string; onDone: (n: string) => void }) {
+  const [v, setV] = useState(name);
+  return <input className="arename" value={v} autoFocus onChange={(e) => setV(e.target.value)} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Enter") onDone(v.trim() || name); if (e.key === "Escape") onDone(name); }} onBlur={() => onDone(v.trim() || name)} aria-label="Display name" />;
+}
+
+function Tile({ e, isSel, thumb, onOpen, onSelect, adm }: { e: Entry; isSel: boolean; thumb: string; onOpen: (e: Entry, ev: React.MouseEvent) => void; onSelect: (rel: string, ev: React.MouseEvent) => void; adm?: AdmTile }) {
   const thumbable = e.kind === "image" || e.kind === "video" || e.kind === "raw";
-  if (e.kind === "folder") return (
-    <button className={`tile folder ${isSel ? "sel" : ""} ${e.cover ? "hascover" : ""}`} onClick={(ev) => onOpen(e, ev)} onContextMenu={(ev) => { ev.preventDefault(); onSelect(e.rel, ev); }} aria-label={e.name}>
+  if (e.kind === "folder") {
+    const renaming = adm?.renaming === e.rel;
+    return (
+    <button className={`tile folder ${isSel ? "sel" : ""} ${e.cover ? "hascover" : ""} ${adm ? "adm" : ""}`} onClick={(ev) => { if (!renaming) onOpen(e, ev); }} onContextMenu={(ev) => { ev.preventDefault(); onSelect(e.rel, ev); }} aria-label={e.name}>
       {e.cover && <img className="coverimg" src={thumb.replace(encodeURIComponent(e.rel), encodeURIComponent(e.cover))} alt="" loading="lazy" />}
       <svg width="28" height="22" viewBox="0 0 28 22" aria-hidden="true"><path d="M1 4a2 2 0 0 1 2-2h7l3 3h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z" fill="none" stroke="var(--amber)" strokeWidth="1.5" /></svg>
-      <span className="box" onClick={(ev) => { ev.stopPropagation(); onSelect(e.rel, ev); }}>{isSel && <Check />}</span>
-      <span className="cap"><span className="n">{e.name.toUpperCase()}</span><span className="s">{e.count} ITEMS</span></span>
+      {adm ? <span className="ahover" onClick={(ev) => ev.stopPropagation()}>
+        {e.real && <span className={e.cover ? "on" : ""} title="Folder cover" onClick={() => adm.onCover(e)}><svg width="12" height="12" viewBox="0 0 24 24" fill={e.alias === undefined ? "none" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z" /></svg></span>}
+        {adm.canRename(e) && <span title="Rename (display only — disk unchanged)" onClick={() => adm.onRenameStart(e)}>✎</span>}
+        {adm.onRemove && <span className="rm" title="Remove from this share" onClick={() => adm.onRemove!(e)}>✕</span>}
+      </span> : <span className="box" onClick={(ev) => { ev.stopPropagation(); onSelect(e.rel, ev); }}>{isSel && <Check />}</span>}
+      <span className="cap">{renaming ? <RenameBox name={e.name} onDone={(n) => adm!.onRename(e, n)} /> : <span className="n" title={e.alias ? `Folder on disk: ${e.real?.split("/").pop()}` : undefined}>{e.name.toUpperCase()}{e.alias && adm && <i className="aliasdot" title="Renamed for visitors" />}</span>}<span className="s">{e.count} ITEMS</span></span>
     </button>
-  );
+  ); }
   return (
     <button className={`tile ${isSel ? "sel" : ""}`} onClick={(ev) => onOpen(e, ev)} onContextMenu={(ev) => { ev.preventDefault(); onSelect(e.rel, ev); }} aria-label={e.name}>
       {thumbable ? <Thumb src={thumb} ext={e.name.split(".").pop() || ""} /> : <span className="noimg">{(e.name.split(".").pop() || "FILE").toUpperCase()}</span>}

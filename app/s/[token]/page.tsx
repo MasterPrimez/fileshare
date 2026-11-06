@@ -1,5 +1,5 @@
 import Brand from "../../brand";
-import { getShareByToken, shareStatus, recordVisit, logEvent, getVisitor, touchVisitor } from "@/lib/shares";
+import { getShareByToken, shareStatus, recordVisit, logEvent, getVisitor, touchVisitor, LIBRARY, libraryShare } from "@/lib/shares";
 import { shareUnlocked, ensureVisitorId, isAdmin } from "@/lib/auth";
 import NameGate from "./namegate";
 import { headers } from "next/headers";
@@ -12,7 +12,8 @@ const MSG: Record<string, string> = { missing: "This link doesn't exist.", revok
 
 export default async function SharePage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const share = getShareByToken(token);
+  const adminFirst = token === LIBRARY ? await isAdmin(new Request("http://x", { headers: await headers() })) : false;
+  const share = token === LIBRARY ? (adminFirst ? libraryShare() : undefined) : getShareByToken(token);
   const status = shareStatus(share);
 
   if (status !== "ok" || !share) {
@@ -30,7 +31,7 @@ export default async function SharePage({ params }: { params: Promise<{ token: s
   const v = getVisitor(vid);
   const admin = await isAdmin(new Request("http://x", { headers: await headers() }));
 
-  if (admin) return <Gallery token={token} name={share.name} mode={share.mode} expiresAt={share.expires_at} />;
+  if (admin) return <Gallery token={token} name={share.name} mode={share.mode} expiresAt={share.expires_at} admin shareId={share.id} />;
 
   if (share.password_hash && !(await shareUnlocked(token))) {
     // password implies a name: required, on the same screen, unless this device already gave one

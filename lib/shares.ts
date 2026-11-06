@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import db, { Share, Event, Visitor } from "./db";
 export type { Share, Event, Visitor };
-import { resolveSafe } from "./roots";
+import { resolveSafe, listRoots } from "./roots";
 import { seal, open } from "./secret";
 
 export function createShare(input: {
@@ -33,16 +33,31 @@ export function getShareById(id: string): Share | undefined {
 }
 
 export function getShareByToken(token: string): Share | undefined {
+  if (token === LIBRARY) return undefined; // never from the DB; see libraryShare()
   return db.prepare("SELECT * FROM shares WHERE token = ?").get(token) as Share | undefined;
+}
+
+/** Admin-only virtual share spanning every mounted root. Only handed out after an isAdmin check. */
+export const LIBRARY = "library";
+export function libraryShare(): Share {
+  const roots = listRoots().map((r) => r.id);
+  return { id: LIBRARY, token: LIBRARY, name: "Library", path: roots[0] || "", mode: "view", password_hash: null, expires_at: null, visit_limit: null, visits: 0, revoked: 0, created_at: 0, ask_name: 0, password_enc: null, paths: JSON.stringify(roots) };
 }
 
 export function listShares(): Share[] {
   return db.prepare("SELECT * FROM shares ORDER BY created_at DESC").all() as Share[];
 }
 
-export function updateShare(id: string, patch: Partial<{ mode: "view" | "edit"; password: string | null; expiresAt: number | null; visitLimit: number | null; revoked: boolean; name: string; askName: boolean }>) {
+export function updateShare(id: string, patch: Partial<{ mode: "view" | "edit"; password: string | null; expiresAt: number | null; visitLimit: number | null; revoked: boolean; name: string; askName: boolean; paths: string[] }>) {
   const sets: string[] = [];
   const vals: unknown[] = [];
+  if (patch.paths) {
+    const list = [...new Set(patch.paths.map((p) => p.replace(/^\/+|\/+$/g, "")).filter(Boolean))];
+    if (!list.length) throw new Error("A share needs at least one folder");
+    for (const p of list) if (!resolveSafe(p)) throw new Error("Path is not inside a mounted root");
+    sets.push("path = ?"); vals.push(list[0]);
+    sets.push("paths = ?"); vals.push(list.length > 1 ? JSON.stringify(list) : null);
+  }
   if (patch.mode) { sets.push("mode = ?"); vals.push(patch.mode); }
   if (patch.name) { sets.push("name = ?"); vals.push(patch.name); }
   if (patch.password !== undefined) { sets.push("password_hash = ?"); vals.push(patch.password ? bcrypt.hashSync(patch.password, 10) : null); sets.push("password_enc = ?"); vals.push(patch.password ? seal(patch.password) : null); }
@@ -80,6 +95,7 @@ export function recordVisit(id: string) {
 }
 
 export function logEvent(shareId: string, kind: string, detail: string | null, req?: Request, visitorId?: string | null, bytes?: number | null) {
+  if (shareId === LIBRARY) return;
   const ip = req?.headers.get("cf-connecting-ip") || req?.headers.get("x-forwarded-for") || null;
   const ua = req?.headers.get("user-agent") || null;
   const vid = visitorId ?? visitorIdFromReq(req);

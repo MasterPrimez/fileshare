@@ -1,6 +1,6 @@
 # HANDOFF — fileshare (share.michaelstine.net)
 
-Last updated: 2026-11-05 by Claude. Status: **live and working.**
+Last updated: 2026-11-06 by Claude. Status: **live and working.**
 
 v2 (same day): visitor gallery got view modes (grid / list / columns / gallery), thumbnail size slider, shift-click range + ⌘-click toggle select, light/dark toggle (persisted in localStorage), single-click closes lightbox. Admin New-share got a resizable picker + preview panel.
 
@@ -85,8 +85,17 @@ lib/db.ts                  better-sqlite3 schema (shares, events)
 ## Dashboard (admin first tab)
 `app/admin/dashboard.tsx` ← `GET /api/admin/stats?days=7|30|90|0` (`stats()` in lib/shares.ts). Tiles, daily opens/downloads bars, device donut, top shares, top visitors, expiring-soon with Extend 7D. `events.bytes` records download/zip sizes from now on (older events count 0 toward "data served").
 
+## v5 (2026-11-06): Library, blue admin layer, rename, history
+- **Library** = `/s/library`: admin-only virtual share over every root (`libraryShare()` in lib/shares.ts; `openShare` + page.tsx check `isAdmin` first; visitors get MISSING). Never logs events.
+- **Admin layer** (blue, `--blue`): when admin is logged in, any `/s/<token>` renders `app/s/[token]/adminstrip.tsx` above the header (mode / expiry / password / + folder / copy / save; Library: shares on this folder + SHARE THIS FOLDER → `/admin#new?p=`). Folder tiles get hover controls ★ cover (CoverModal), ✎ rename, ✕ remove-from-collection. The old iframe viewer is gone.
+- **Display names**: `aliases` table (root-relative folder path → name), `getAlias/setAlias` in lib/files.ts, `PATCH /api/admin/alias`. `Entry.name` already reflects the alias; `Entry.alias/real` are admin-only (`publicEntries()` strips them for visitors). Roots can't be renamed. Disk is never touched.
+- **Share folders**: `PATCH /api/admin/shares/:id { paths: [...] }` adds/removes folders (updateShare validates each). Detail page lists folders with rename / cover / remove + FolderPicker (`app/admin/pickers.tsx`, shared with the strip).
+- **History**: gallery folder = `?p=`, lightbox = `?f=`; `nav()` pushes state, popstate restores, so back/forward and deep links work. Admin tabs live in the hash (`#shares`, `#share/<id>`, `#new?p=`).
+- **Logo** is a link: visitor → share root, admin → /admin. `.brand .tag` has the Kinetics gradient-shimmer sweep.
+- **Roots** page is read-only by design (locked badge). Changing roots = edit docker-compose.yml over SSH (see Share-Root-Folders.pdf). deploy.sh backs up compose across resets.
+
 ## Admin gallery + admin bypass
-Shares page has grid (cover cards, hover → Open/Copy) and list views. Logged-in admin opens any share link with no password/name gate (`isAdmin` short-circuits in `app/s/[token]/page.tsx` and `lib/access.ts`). Share detail has OPEN, and a COVER picker per folder.
+Shares page has grid (cover cards, hover → Open/Edit/Copy) and list views. Logged-in admin opens any share link with no password/name gate (`isAdmin` short-circuits in `app/s/[token]/page.tsx` and `lib/access.ts`).
 
 ## Collections (multi-folder shares)
 `shares.paths` = JSON array of root-relative folders (null = single-folder share using `path`). Visitor sees each as a top-level folder named by basename (`shareItems()` de-dupes). `mapSub(share, sub)` in lib/shares.ts resolves a visitor path's first segment to the right base; all visitor routes go through it. At the collection top: no upload/delete; Download All zips every folder. Admin: browse → "+ Add to collection" per folder; phone: "+ ADD" on the picker.

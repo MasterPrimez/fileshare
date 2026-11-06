@@ -462,3 +462,84 @@ html, body { transition: background .25s, color .25s; }
 .pbox { width: 16px; height: 16px; border-radius: 4px; border: 1px solid var(--line2); background: var(--panel2); display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer; }
 .pbox.on { background: var(--amber); border-color: var(--amber); }
 .picker .p.picked { background: rgba(232,163,61,.08); }
+
+/* ================= v5: wordmark sweep, admin layer (blue), modals, folder lists, phone ================= */
+:root { --blue: #5b8def; --blue2: #8fb3ff; --blue-bg: #0f1522; --blue-line: #22304f; --blue-dim: #6f84ad; }
+.brand { color: inherit; text-decoration: none; }
+a.brand:hover .tag { color: var(--muted); }
+/* Kinetics "Gradient Shimmer Text": a slow amber band sweeps through the tag, then rests */
+.brand .tag { background: linear-gradient(100deg, var(--dim) 35%, var(--amber2) 50%, var(--dim) 65%); background-size: 250% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: wordmark 6s linear infinite; }
+@keyframes wordmark { 0% { background-position: 120% center; } 45%, 100% { background-position: -120% center; } }
+@media (prefers-reduced-motion: reduce) { .brand .tag { animation: none; color: var(--dim); background: none; } }
+.side .brand { margin-bottom: 8px; }
+.side a.lib { color: var(--blue2); }
+.side a.lib:hover { background: var(--blue-bg); color: var(--blue2); }
+
+/* admin strip above a share */
+.astrip { position: sticky; top: 0; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 20px; background: var(--blue-bg); border-bottom: 1px solid var(--blue-line); font-size: 10px; letter-spacing: .1em; color: var(--blue2); }
+.astrip + .hdr { border-top: 0; }
+.alabel { display: inline-flex; align-items: center; gap: 8px; color: var(--blue); font-weight: 500; margin-right: 4px; }
+.alabel i { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 8px var(--blue); animation: apulse 2.4s ease-in-out infinite; }
+@keyframes apulse { 50% { box-shadow: 0 0 2px var(--blue); opacity: .6; } }
+.aname { color: #e6e4df; letter-spacing: .08em; text-decoration: none; }
+a.aname:hover { color: var(--blue2); }
+.asp { flex: 1; }
+.adim { color: var(--blue-dim); }
+.amsg { color: var(--blue2); background: var(--blue-line); padding: 4px 8px; border-radius: 4px; }
+.abtn { font-family: inherit; font-size: 10px; letter-spacing: .1em; padding: 6px 10px; border-radius: 5px; border: 1px solid var(--blue-line); background: #131b2c; color: var(--blue2); cursor: pointer; text-decoration: none; transition: background .2s, color .2s, transform .18s var(--spring); }
+.abtn:hover { background: var(--blue-line); color: #fff; }
+.abtn:active { transform: scale(.96); }
+.abtn.pri { background: var(--blue); border-color: var(--blue); color: #0c0c0d; font-weight: 500; }
+.abtn.pri:hover { background: var(--blue2); color: #0c0c0d; }
+.abtn:disabled { opacity: .4; cursor: default; }
+.abtn.ghost { background: transparent; }
+.apill { font-size: 10px; letter-spacing: .08em; padding: 5px 9px; border-radius: 999px; border: 1px solid var(--blue-line); color: var(--blue2); cursor: pointer; user-select: none; transition: background .2s, color .2s; }
+.apill:hover { border-color: var(--blue); }
+.apill.on { background: var(--blue); color: #0c0c0d; border-color: var(--blue); }
+.ain { font-family: var(--mono); font-size: 11px; width: 120px; padding: 5px 8px; border-radius: 5px; border: 1px solid var(--blue-line); background: #0c0c0d; color: var(--text); outline: none; }
+.ain:focus { border-color: var(--blue); }
+.achip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--blue-line); color: var(--text); text-decoration: none; font-size: 10px; }
+.achip i { width: 6px; height: 6px; border-radius: 50%; background: #4cd08a; }
+.achip.off { color: var(--blue-dim); } .achip.off i { background: var(--blue-dim); }
+.achip:hover { border-color: var(--blue); color: #fff; }
+
+/* blue hover controls on folder tiles (admin only) */
+.tile.folder .ahover { position: absolute; top: 8px; right: 8px; display: flex; gap: 5px; z-index: 3; opacity: 0; transform: translateY(-4px); transition: opacity .2s, transform .3s var(--spring); }
+.tile.folder.adm:hover .ahover, .tile.folder.adm:focus-within .ahover { opacity: 1; transform: none; }
+.ahover span { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 6px; background: rgba(12,16,28,.9); border: 1px solid var(--blue-line); color: var(--blue2); font-size: 12px; cursor: pointer; transition: transform .18s var(--spring), background .2s; }
+.ahover span:hover { transform: scale(1.1); background: var(--blue); color: #0c0c0d; }
+.ahover span.on { background: var(--blue); color: #0c0c0d; }
+.ahover span.rm:hover { background: var(--red); }
+.arename { font-family: var(--mono); font-size: 11px; width: 100%; max-width: 100%; min-width: 0; padding: 2px 4px; border: 0; border-bottom: 1px solid var(--blue); background: rgba(91,141,239,.12); color: var(--bright); outline: none; letter-spacing: .04em; }
+.aliasdot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--blue); margin-left: 6px; vertical-align: middle; }
+.apencil { color: var(--blue-dim); margin-left: 8px; cursor: pointer; opacity: 0; transition: opacity .2s; }
+tr:hover .apencil { opacity: 1; } .apencil:hover { color: var(--blue2); }
+
+/* modals */
+.modal { position: fixed; inset: 0; z-index: 60; background: rgba(12,12,13,.8); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.mbox { width: 100%; max-width: 720px; max-height: 90vh; overflow: auto; background: var(--panel); border: 1px solid var(--line2); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 12px; animation: mbox .35s var(--spring); }
+@keyframes mbox { from { transform: scale(.96) translateY(8px); opacity: 0; } }
+.mbox .eyebrow { color: var(--dim); letter-spacing: .14em; font-size: 10px; }
+
+/* folder rows (share detail, roots) */
+.flist2 { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.frow { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.frow:last-child { border-bottom: 0; }
+.frow img, .frow .fimg { width: 44px; height: 30px; object-fit: cover; border-radius: 4px; background: var(--panel2); flex-shrink: 0; }
+.frow .fn { min-width: 160px; color: var(--text); }
+.frow .fp { flex: 1; color: var(--dim); font-size: 10px; letter-spacing: .06em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.frow .arename { max-width: 240px; }
+.lock { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; border: 1px solid #3a2d14; background: #17140d; color: var(--amber); font-size: 10px; letter-spacing: .12em; }
+
+/* phone: keep the tag, sticky actions at the bottom */
+@media (max-width: 640px) {
+  .hdr .brand .tag { display: inline; font-size: 10px; }
+  .bar .actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; margin: 0; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--bg) 35%); }
+  main.grid { padding-bottom: 96px; }
+  .ftr { padding-bottom: 90px; }
+  .astrip { padding: 8px 12px; gap: 6px; overflow-x: auto; flex-wrap: nowrap; }
+  .astrip .adim { display: none; }
+  .astrip .asp { flex: 0 0 4px; }
+  .tile.folder .ahover { opacity: 1; transform: none; }
+  .mbox { padding: 12px; }
+}

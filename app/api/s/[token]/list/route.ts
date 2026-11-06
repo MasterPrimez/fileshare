@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { openShare } from "@/lib/access";
-import { listDir, statIn, videoDuration, listCollection } from "@/lib/files";
+import { listDir, statIn, videoDuration, listCollection, getAlias, publicEntries } from "@/lib/files";
+import { isAdmin } from "@/lib/auth";
+import { listRoots } from "@/lib/roots";
 import { mapSub, shareItems, isCollection } from "@/lib/shares";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
@@ -20,5 +22,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     const d = s ? await videoDuration(s.abs) : null;
     return { ...e, duration: d };
   }));
-  return NextResponse.json({ share: { name: r.share.name, mode: r.share.mode, expires_at: r.share.expires_at, collection: isCollection(r.share) }, path: sub, entries: withDur });
+  // display names for each crumb segment (aliases), without exposing real paths to visitors
+  const segs = sub.split("/").filter(Boolean);
+  const crumbs = segs.map((seg, i) => {
+    const mm = mapSub(r.share, segs.slice(0, i + 1).join("/"));
+    if (!mm) return { rel: segs.slice(0, i + 1).join("/"), name: seg };
+    const real = mm.rest ? `${mm.base}/${mm.rest}` : mm.base;
+    const isRoot = !mm.base.includes("/") && !mm.rest;
+    return { rel: segs.slice(0, i + 1).join("/"), name: getAlias(real) || (isRoot ? (listRoots().find((x) => x.id === mm.base)?.label || seg) : seg) };
+  });
+  const admin = await isAdmin(req);
+  const real = admin && m ? (m.rest ? `${m.base}/${m.rest}` : m.base) : null;
+  return NextResponse.json({ real, share: { id: r.share.id, name: r.share.name, mode: r.share.mode, expires_at: r.share.expires_at, collection: isCollection(r.share) }, path: sub, crumbs, entries: admin ? withDur : publicEntries(withDur) });
 }

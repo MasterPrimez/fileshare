@@ -3,16 +3,28 @@ import Brand from "../brand";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Log, Ev, Vis } from "./log";
 import Dashboard from "./dashboard";
+import { CoverPicker, FolderPicker, AThumb, AF, fmtSz, Star } from "./pickers";
 
-type ShareRow = { id: string; token: string; name: string; path: string; paths?: string | null; folders?: string[]; cover?: string | null; mode: "view" | "edit"; has_password: boolean; password?: string | null; ask_name: number; expires_at: number | null; visit_limit: number | null; visits: number; revoked: number; created_at: number; status: string; counts: Record<string, number> };
+type ShareRow = { id: string; token: string; name: string; path: string; paths?: string | null; folders?: string[]; cover?: string | null; aliases?: Record<string, string>; covers?: Record<string, string>; mode: "view" | "edit"; has_password: boolean; password?: string | null; ask_name: number; expires_at: number | null; visit_limit: number | null; visits: number; revoked: number; created_at: number; status: string; counts: Record<string, number> };
 
 const fmt = (ms: number) => new Date(ms).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const base = () => (typeof window !== "undefined" ? window.location.origin : "");
 
+type Tab = "dash" | "shares" | "new" | "log" | "roots";
+/** Tabs + detail live in the URL hash so browser back/forward work: #shares, #share/<id>, #new?p=<folder> */
+function parseHash(): { tab: Tab; id?: string; p?: string } {
+  const h = (typeof window !== "undefined" ? location.hash : "").replace(/^#/, "");
+  const [head, q] = h.split("?");
+  const p = q ? new URLSearchParams(q).get("p") || undefined : undefined;
+  if (head.startsWith("share/")) return { tab: "shares", id: head.slice(6) };
+  const t = (["dash", "shares", "new", "log", "roots"] as Tab[]).includes(head as Tab) ? (head as Tab) : "dash";
+  return { tab: t, p };
+}
+
 export default function Admin() {
-  const [tab, setTab] = useState<"dash" | "shares" | "new" | "log" | "roots">("dash");
+  const [tab, setTabState] = useState<Tab>("dash");
+  const [newPath, setNewPath] = useState<string | undefined>(undefined);
   const [grid, setGrid] = useState(true);
-  const [viewing, setViewing] = useState<ShareRow | null>(null);
   const [shares, setShares] = useState<ShareRow[]>([]);
   const [events, setEvents] = useState<Ev[]>([]);
   const [visitors, setVisitors] = useState<Record<string, Vis>>({});
@@ -27,30 +39,36 @@ export default function Admin() {
   }, []);
   useEffect(() => { refresh(); }, [refresh]);
 
+  // hash routing
+  useEffect(() => {
+    const apply = () => { const h = parseHash(); setTabState(h.tab); setNewPath(h.p); if (h.id) openDetail(h.id); else setDetail(null); };
+    apply(); window.addEventListener("hashchange", apply);
+    return () => window.removeEventListener("hashchange", apply);
+  }, []); // eslint-disable-line
+  const setTab = (t: Tab) => { location.hash = t === "dash" ? "" : t; };
+
   async function patch(id: string, body: object) { await fetch(`/api/admin/shares/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); refresh(); }
   async function remove(id: string) { if (!confirm("Delete this share and its log?")) return; await fetch(`/api/admin/shares/${id}`, { method: "DELETE" }); setDetail(null); refresh(); }
-  async function openDetail(id: string) { const r = await fetch(`/api/admin/shares/${id}`); if (r.ok) setDetail(await r.json()); }
+  async function openDetail(id: string) { const r = await fetch(`/api/admin/shares/${id}`); if (r.ok) setDetail(await r.json()); if (location.hash !== `#share/${id}`) location.hash = `share/${id}`; }
   async function rename(id: string, name: string) { await fetch("/api/admin/visitors", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id, name }) }); refresh(); if (detail) openDetail(detail.share.id); }
   function copy(t: string) { navigator.clipboard.writeText(`${base()}/s/${t}`); say("LINK COPIED"); }
 
   return (
     <div className="admin">
       <aside className="side">
-        <Brand tag="ADMIN" size={34} />
-        <a href="#" className={tab === "dash" ? "on" : ""} onClick={(e) => { e.preventDefault(); setTab("dash"); setDetail(null); setViewing(null); }}>Dashboard</a>
-        <a href="#" className={tab === "shares" ? "on" : ""} onClick={(e) => { e.preventDefault(); setTab("shares"); setDetail(null); setViewing(null); }}>Shares</a>
-        <a href="#" className={tab === "new" ? "on" : ""} onClick={(e) => { e.preventDefault(); setTab("new"); setDetail(null); }}>+ New share</a>
-        <a href="#" className={tab === "log" ? "on" : ""} onClick={(e) => { e.preventDefault(); setTab("log"); setDetail(null); }}>Activity</a>
-        <a href="#" className={tab === "roots" ? "on" : ""} onClick={(e) => { e.preventDefault(); setTab("roots"); setDetail(null); }}>Roots</a>
+        <Brand tag="ADMIN" size={34} href="/admin" />
+        <a href="#" className={tab === "dash" ? "on" : ""} onClick={(e) => { e.preventDefault(); setTab("dash"); }}>Dashboard</a>
+        <a href="/s/library" className="lib">Library</a>
+        <a href="#shares" className={tab === "shares" ? "on" : ""} onClick={(e) => { e.preventDefault(); setTab("shares"); }}>Shares</a>
+        <a href="#new" className={tab === "new" ? "on" : ""} onClick={(e) => { e.preventDefault(); setTab("new"); }}>+ New share</a>
+        <a href="#log" className={tab === "log" ? "on" : ""} onClick={(e) => { e.preventDefault(); setTab("log"); }}>Activity</a>
+        <a href="#roots" className={tab === "roots" ? "on" : ""} onClick={(e) => { e.preventDefault(); setTab("roots"); }}>Roots</a>
         <div style={{ flex: 1 }} />
         <a href="#" onClick={async (e) => { e.preventDefault(); await fetch("/api/admin/login", { method: "DELETE" }); location.reload(); }}>Sign out</a>
       </aside>
 
       <section className="content">
-        {viewing ? <>
-          <div className="row" style={{ justifyContent: "space-between" }}><div className="row"><button className="btn sm" onClick={() => setViewing(null)}>← BACK TO SHARES</button><h2 className="h" style={{ fontSize: 24 }}>{viewing.name.toUpperCase()}</h2></div><div className="row"><button className="btn sm" onClick={() => { const v = viewing; setViewing(null); openDetail(v.id); }}>EDIT</button><a className="btn sm" href={`/s/${viewing.token}`} target="_blank" rel="noreferrer">NEW TAB</a></div></div>
-          <iframe className="viewer" src={`/s/${viewing.token}`} title={viewing.name} />
-        </> : detail ? <Detail d={detail} onBack={() => setDetail(null)} onPatch={(b) => patch(detail.share.id, b).then(() => openDetail(detail.share.id))} onDelete={() => remove(detail.share.id)} onCopy={() => copy(detail.share.token)} onRename={rename} onView={() => { setViewing(detail.share); setDetail(null); }} /> :
+        {detail ? <Detail d={detail} onBack={() => setTab("shares")} onPatch={(b) => patch(detail.share.id, b).then(() => openDetail(detail.share.id))} onDelete={() => remove(detail.share.id)} onCopy={() => copy(detail.share.token)} onRename={rename} onSay={say} /> :
         tab === "dash" ? <Dashboard onOpenShare={(id) => openDetail(id)} onExtend={async (id, d) => { const sh = shares.find((x) => x.id === id); const basis = Math.max(Date.now(), sh?.expires_at || 0); await patch(id, { expiresAt: basis + d * 86400000 }); }} /> :
         tab === "shares" ? <>
           <div className="row" style={{ justifyContent: "space-between" }}><h2 className="h">SHARES</h2><div className="seg"><button className={grid ? "on" : ""} onClick={() => setGrid(true)} aria-label="Grid"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="1" width="6" height="6" rx="1" /><rect x="9" y="1" width="6" height="6" rx="1" /><rect x="1" y="9" width="6" height="6" rx="1" /><rect x="9" y="9" width="6" height="6" rx="1" /></svg></button><button className={!grid ? "on" : ""} onClick={() => setGrid(false)} aria-label="List"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="1" y="2" width="14" height="2" rx="1" /><rect x="1" y="7" width="14" height="2" rx="1" /><rect x="1" y="12" width="14" height="2" rx="1" /></svg></button></div></div>
@@ -63,7 +81,7 @@ export default function Admin() {
                   {s.cover ? <img src={`/api/admin/thumb?p=${encodeURIComponent(s.cover)}&w=600`} alt="" loading="lazy" /> : <span className="noimg">{s.folders && s.folders.length > 1 ? "COLLECTION" : "EMPTY"}</span>}
                   <span className="sc-top"><span className={`status ${s.status === "ok" ? "ok" : "off"}`}>{s.status === "ok" ? (s.mode === "edit" ? "EDIT" : "READ ONLY") : s.status.toUpperCase()}</span>{s.has_password && <span className="status">🔒</span>}{s.folders && s.folders.length > 1 && <span className="status">{s.folders.length} FOLDERS</span>}</span>
                   <span className="sc-cap"><span className="sc-n">{s.name}</span><span className="sc-m">{s.visits} OPENS · {(s.counts.download || 0) + (s.counts.zip || 0)} DL · {d === null ? "NO EXPIRY" : `${d}D LEFT`}</span></span>
-                  <span className="sc-act" onClick={(e) => e.stopPropagation()}><button className="btn sm" onClick={() => setViewing(s)}>VIEW</button><button className="btn sm" onClick={() => openDetail(s.id)}>EDIT</button><button className="btn sm" onClick={() => copy(s.token)}>COPY</button></span>
+                  <span className="sc-act" onClick={(e) => e.stopPropagation()}><a className="btn sm" href={`/s/${s.token}`}>OPEN</a><button className="btn sm" onClick={() => openDetail(s.id)}>EDIT</button><button className="btn sm" onClick={() => copy(s.token)}>COPY</button></span>
                 </button>
               );
             })}
@@ -84,7 +102,7 @@ export default function Admin() {
             </tr>)}
           </tbody></table>}
         </> :
-        tab === "new" ? <NewShare onDone={(t) => { refresh(); setTab("shares"); copy(t); }} /> :
+        tab === "new" ? <NewShare key={newPath || ""} initial={newPath} onDone={(t) => { refresh(); setTab("shares"); copy(t); }} /> :
         tab === "log" ? <>
           <h2 className="h">ACTIVITY</h2>
           <Log events={events} visitors={visitors} me={me} showShare onRename={rename} />
@@ -95,17 +113,40 @@ export default function Admin() {
   );
 }
 
-function Detail({ d, onBack, onPatch, onDelete, onCopy, onRename, onView }: { d: { share: ShareRow; events: Ev[]; visitors: Record<string, Vis>; me: string | null }; onBack: () => void; onPatch: (b: object) => void; onDelete: () => void; onCopy: () => void; onRename: (id: string, name: string) => void; onView: () => void }) {
+function Detail({ d, onBack, onPatch, onDelete, onCopy, onRename, onSay }: { d: { share: ShareRow; events: Ev[]; visitors: Record<string, Vis>; me: string | null }; onBack: () => void; onPatch: (b: object) => void; onDelete: () => void; onCopy: () => void; onRename: (id: string, name: string) => void; onSay: (m: string) => void }) {
   const s = d.share;
   const [pw, setPw] = useState("");
   const [exp, setExp] = useState(s.expires_at ? new Date(s.expires_at).toISOString().slice(0, 10) : "");
+  const [pick, setPick] = useState(false);
+  const [coverOf, setCoverOf] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [aliases, setAliases] = useState<Record<string, string>>(s.aliases || {});
+  const folders = s.folders || [s.path];
+  async function setFolders(list: string[]) { await onPatch({ paths: list }); onSay(list.length < folders.length ? "FOLDER REMOVED" : "FOLDER ADDED"); }
+  async function alias(f: string, name: string) {
+    setRenaming(null);
+    const r = await fetch("/api/admin/alias", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: f, name: name === (f.split("/").pop() || "") ? null : name }) });
+    if (r.ok) { const j = await r.json(); setAliases((a) => { const n = { ...a }; if (j.name) n[f] = j.name; else delete n[f]; return n; }); onSay("RENAMED"); }
+  }
   return <>
     <div className="row"><button className="btn sm" onClick={onBack}>← BACK</button></div>
     <h2 className="h">{s.name.toUpperCase()}</h2>
-    <div className="row"><div className="code" onClick={onCopy} style={{ cursor: "pointer", flex: 1 }}>{base()}/s/{s.token}</div><button className="btn pri" onClick={() => onView()}>VIEW</button></div>
-    <div className="row" style={{ alignItems: "flex-start" }}>
-      <span className="sub">{s.paths ? "FOLDERS" : "FOLDER"}</span>
-      {s.paths ? <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>{(JSON.parse(s.paths) as string[]).map((p) => <span key={p}>{p}</span>)}</span> : <span>{s.path}</span>}
+    <div className="row"><div className="code" onClick={onCopy} style={{ cursor: "pointer", flex: 1 }}>{base()}/s/{s.token}</div><a className="btn pri" href={`/s/${s.token}`}>OPEN</a></div>
+    <div className="field">
+      <div className="row" style={{ justifyContent: "space-between" }}><label>{folders.length > 1 ? `FOLDERS IN THIS SHARE · ${folders.length}` : "FOLDER"}</label><button className="btn sm" onClick={() => setPick(true)}>+ ADD FOLDER</button></div>
+      <div className="flist2">
+        {folders.map((f) => { const disk = f.split("/").pop() || f; const shown = aliases[f] || disk; return (
+          <div key={f} className="frow">
+            {s.covers?.[f] ? <img src={`/api/admin/thumb?p=${encodeURIComponent(s.covers[f])}&w=120`} alt="" /> : <span className="fimg" />}
+            <span className="fn">{renaming === f ? <input className="arename" defaultValue={shown} autoFocus aria-label="Display name" onKeyDown={(e) => { if (e.key === "Enter") alias(f, (e.target as HTMLInputElement).value.trim() || disk); if (e.key === "Escape") setRenaming(null); }} onBlur={(e) => alias(f, e.target.value.trim() || disk)} /> : <span onClick={() => f.includes("/") && setRenaming(f)} title={f.includes("/") ? "Click to rename (display only)" : "Roots can't be renamed"} style={{ cursor: f.includes("/") ? "text" : "default" }}>{shown}{aliases[f] && <i className="aliasdot" title={`On disk: ${disk}`} />}</span>}</span>
+            <span className="fp">{f.split("/").slice(0, -1).join(" / ")}</span>
+            <button className="btn sm" onClick={() => setCoverOf(coverOf === f ? null : f)}><Star on={coverOf === f} /> COVER</button>
+            {folders.length > 1 && <button className="btn sm danger" onClick={() => { if (confirm(`Remove "${shown}" from this share? The folder stays on the NAS.`)) setFolders(folders.filter((x) => x !== f)); }}>✕</button>}
+          </div>); })}
+      </div>
+      {coverOf && <CoverPicker folder={coverOf} onChange={() => onSay("COVER SET")} />}
+      <span className="sub" style={{ fontSize: 10 }}>NAMES ARE DISPLAY-ONLY · CLICK A NAME TO RENAME · FOLDERS ON DISK ARE NEVER RENAMED</span>
+      {pick && <FolderPicker exclude={folders} onDone={(rels) => { setPick(false); if (rels.length) setFolders([...folders, ...rels]); }} onCancel={() => setPick(false)} />}
     </div>
     <div className="row">
       <button className={`pill ${s.mode === "view" ? "on" : ""}`} onClick={() => onPatch({ mode: "view" })}>READ ONLY</button>
@@ -128,8 +169,6 @@ function Detail({ d, onBack, onPatch, onDelete, onCopy, onRename, onView }: { d:
         <span className="sub">OPENED {s.visits}× {s.visit_limit ? `OF ${s.visit_limit}` : ""} · CREATED {fmt(s.created_at)}</span>
       </div>
     </div>
-    <h2 className="h" style={{ fontSize: 24 }}>COVER</h2>
-    {(s.folders || [s.path]).map((f) => <CoverPicker key={f} folder={f} />)}
     <h2 className="h" style={{ fontSize: 24 }}>LOG</h2>
     <Log events={d.events} visitors={d.visitors} me={d.me} onRename={onRename} />
   </>;
@@ -140,10 +179,7 @@ function short(ua: string) {
   if (/Macintosh/.test(ua)) return "Mac"; if (/Windows/.test(ua)) return "Windows"; return "Other";
 }
 
-type AF = { name: string; rel: string; kind: string; size: number; mtime: number };
-const fmtSz = (n: number) => n < 1024 ** 2 ? `${Math.max(1, Math.round(n / 1024))} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(0)} MB` : `${(n / 1024 ** 3).toFixed(1)} GB`;
-
-function NewShare({ onDone }: { onDone: (token: string) => void }) {
+function NewShare({ onDone, initial }: { onDone: (token: string) => void; initial?: string }) {
   const [cur, setCur] = useState("");
   const [folders, setFolders] = useState<{ name: string; rel: string; cover?: string | null }[]>([]);
   const [files, setFiles] = useState<AF[]>([]);
@@ -166,7 +202,7 @@ function NewShare({ onDone }: { onDone: (token: string) => void }) {
     setCur(j.path); setFolders(j.folders); setFiles(j.files || []); setCover(j.cover || null);
     if (p && !collRef.current.length) setName(p.split("/").pop() || "");
   }, []);
-  useEffect(() => { browse(""); }, []); // eslint-disable-line
+  useEffect(() => { browse(initial || ""); if (initial) { setColl([{ rel: initial, name: initial.split("/").pop() || initial }]); setName(initial.split("/").pop() || ""); } }, []); // eslint-disable-line
 
   const up = cur.includes("/") ? cur.slice(0, cur.lastIndexOf("/")) : "";
   const media = files.filter((f) => f.kind === "image" || f.kind === "video" || f.kind === "raw");
@@ -245,53 +281,17 @@ function NewShare({ onDone }: { onDone: (token: string) => void }) {
   </>;
 }
 
-function CoverPicker({ folder }: { folder: string }) {
-  const [cur, setCur] = useState(folder);
-  const [files, setFiles] = useState<AF[]>([]);
-  const [subs, setSubs] = useState<{ name: string; rel: string; cover?: string | null }[]>([]);
-  const [cover, setCover] = useState<string | null>(null);
-  const load = useCallback(async (p: string) => { const r = await fetch(`/api/admin/browse?p=${encodeURIComponent(p)}`); if (r.ok) { const j = await r.json(); setCur(j.path); setFiles((j.files || []).filter((f: AF) => f.kind === "image")); setSubs(j.folders || []); setCover(j.cover || null); } }, []);
-  useEffect(() => { load(folder); }, [folder, load]);
-  async function set(file: string | null) { await fetch("/api/admin/cover", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: cur, file }) }); setCover(file); }
-  const inside = cur !== folder;
-  return (
-    <div className="field">
-      <div className="row">
-        {inside && <button className="btn sm" onClick={() => load(cur.split("/").slice(0, -1).join("/"))}>↑ UP</button>}
-        <span className="sub">{cur.toUpperCase()} · {cover ? `COVER: ${cover}` : "COVER: AUTO (FIRST PHOTO)"}</span>
-      </div>
-      {!!subs.length && <div className="row" style={{ gap: 6 }}>{subs.map((f) => <button key={f.rel} className="pill" onClick={() => load(f.rel)}>▸ {f.name}</button>)}</div>}
-      {!files.length && <span className="sub" style={{ color: "var(--faint)" }}>NO PHOTOS AT THIS LEVEL{subs.length ? " — OPEN A SUBFOLDER TO SET ITS COVER" : ""}</span>}
-      <div className="ptiles" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", maxHeight: 260 }}>
-        {files.map((f) => (
-          <button key={f.rel} className={`tile ${cover === f.name ? "iscover" : ""}`} onClick={() => set(cover === f.name ? null : f.name)} aria-label={`Set ${f.name} as cover`} title={cover === f.name ? "Click to clear" : "Set as cover"}>
-            <span className={`star ${cover === f.name ? "on" : ""}`}><svg width="14" height="14" viewBox="0 0 24 24" fill={cover === f.name ? "var(--amber)" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z" /></svg></span>
-            <AThumb src={`/api/admin/thumb?p=${encodeURIComponent(f.rel)}&w=300`} ext={f.name.split(".").pop() || ""} />
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function AThumb({ src, ext }: { src: string; ext: string }) {
-  const [ok, setOk] = useState(false);
-  const [fail, setFail] = useState(false);
-  if (fail) return <span className="noimg">{ext.toUpperCase()}</span>;
-  return <img src={src} alt="" loading="lazy" className={ok ? "ok" : ""} onLoad={() => setOk(true)} onError={() => setFail(true)} />;
-}
-
 function Roots() {
   const [roots, setRoots] = useState<{ name: string; rel: string }[]>([]);
-  useEffect(() => { fetch("/api/admin/browse").then((r) => r.json()).then((j) => setRoots(j.folders || [])); }, []);
+  const [shares, setShares] = useState<ShareRow[]>([]);
+  useEffect(() => { fetch("/api/admin/browse").then((r) => r.json()).then((j) => setRoots(j.folders || [])); fetch("/api/admin/shares").then((r) => r.json()).then((j) => setShares(j.shares || [])); }, []);
+  const n = (rel: string) => shares.filter((s) => s.status === "ok" && (s.folders || [s.path]).some((f) => f === rel || f.startsWith(rel + "/"))).length;
   return <>
-    <h2 className="h">ROOTS</h2>
-    <span className="sub">FOLDERS THE APP CAN SEE. EVERYTHING ELSE ON THE NAS IS INVISIBLE TO IT.</span>
-    <table className="table"><thead><tr><th>ROOT</th><th>CONTAINER PATH</th></tr></thead><tbody>{roots.map((r) => <tr key={r.rel}><td style={{ color: "var(--bright)" }}>{r.name}</td><td style={{ color: "var(--muted)" }}>/data/{r.rel}</td></tr>)}</tbody></table>
-    <div className="form">
-      <span className="sub">TO ADD A ROOT, ADD ONE LINE UNDER <b style={{ color: "var(--amber)", fontWeight: 400 }}>volumes:</b> IN docker-compose.yml, THEN RESTART:</span>
-      <div className="code">- "/volume1/home/Michael Stine/NEW FOLDER:/data/new-folder:ro"</div>
-      <span className="sub">USE :ro FOR READ-ONLY ROOTS (EDIT SHARES WON&apos;T WORK THERE). DROP :ro TO ALLOW EDIT SHARES. REMOVE THE LINE TO REMOVE THE ROOT.</span>
+    <div className="row" style={{ alignItems: "center", gap: 14 }}><h2 className="h">ROOTS</h2><span className="lock">🔒 LOCKED · SET ON THE NAS ONLY</span></div>
+    <span className="sub">THE ONLY FOLDERS THIS SITE CAN SEE. THEY CANNOT BE ADDED, REMOVED OR CHANGED FROM THE WEB — EVEN BY ADMIN. ANYTHING ELSE ON THE NAS DOES NOT EXIST TO THIS APP.</span>
+    <div className="flist2" style={{ maxWidth: 760 }}>
+      {roots.map((r) => <div key={r.rel} className="frow"><span className="fn" style={{ color: "var(--bright)" }}>{r.name}</span><span className="fp">/data/{r.rel}</span><span className={`status ${n(r.rel) ? "ok" : "off"}`}>{n(r.rel)} ACTIVE SHARE{n(r.rel) === 1 ? "" : "S"}</span></div>)}
+      {!roots.length && <div className="frow"><span className="sub">NOTHING MOUNTED</span></div>}
     </div>
   </>;
 }

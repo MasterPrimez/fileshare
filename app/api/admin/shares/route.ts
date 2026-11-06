@@ -1,22 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { createShare, listShares, eventCounts, shareStatus, sharePassword, shareItems } from "@/lib/shares";
-import { getCover, kindOf } from "@/lib/files";
-import { resolveSafe } from "@/lib/roots";
-import fs from "node:fs";
-import path from "node:path";
-
-function coverFor(folderRel: string, depth = 0): string | null {
-  const r = resolveSafe(folderRel); if (!r || !fs.existsSync(r.abs)) return null;
-  try {
-    const names = fs.readdirSync(r.abs).filter((n) => !n.startsWith(".") && n !== "@eaDir");
-    const set = getCover(r.rel);
-    const pick = set && names.includes(set) ? set : names.filter((n) => kindOf(n) === "image").sort()[0];
-    if (pick) return path.posix.join(r.rel, pick);
-    if (depth < 2) for (const n of names.sort()) { try { if (fs.statSync(path.join(r.abs, n)).isDirectory()) { const c = coverFor(path.posix.join(r.rel, n), depth + 1); if (c) return c; } } catch {} }
-  } catch {}
-  return null;
-}
+import { coverFor } from "@/lib/files";
 
 export async function GET(req: NextRequest) {
   if (!(await isAdmin(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });

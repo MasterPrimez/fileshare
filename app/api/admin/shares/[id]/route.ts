@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { updateShare, deleteShare, getShareById, listEvents, visitorsFor, sharePassword, shareItems } from "@/lib/shares";
 import { visitorId } from "@/lib/auth";
+import { getAlias, coverFor } from "@/lib/files";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!(await isAdmin(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -9,14 +10,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const s = getShareById(id);
   if (!s) return NextResponse.json({ error: "missing" }, { status: 404 });
   const events = listEvents(id);
-  return NextResponse.json({ share: { ...s, password_hash: undefined, password_enc: undefined, has_password: !!s.password_hash, password: sharePassword(s), folders: shareItems(s).map((i) => i.base) }, events, visitors: visitorsFor(events), me: await visitorId() });
+  return NextResponse.json({ share: { ...s, password_hash: undefined, password_enc: undefined, has_password: !!s.password_hash, password: sharePassword(s), folders: shareItems(s).map((i) => i.base), aliases: Object.fromEntries(shareItems(s).map((i) => [i.base, getAlias(i.base)]).filter(([, v]) => v)), covers: Object.fromEntries(shareItems(s).map((i) => [i.base, coverFor(i.base)]).filter(([, v]) => v)) }, events, visitors: visitorsFor(events), me: await visitorId() });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!(await isAdmin(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   const { id } = await params;
   const b = await req.json();
-  updateShare(id, {
+  try { updateShare(id, {
     mode: b.mode,
     name: b.name,
     password: b.password === undefined ? undefined : (b.password || null),
@@ -24,7 +25,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     visitLimit: b.visitLimit === undefined ? undefined : (b.visitLimit ? Number(b.visitLimit) : null),
     revoked: b.revoked,
     askName: b.askName,
-  });
+    paths: Array.isArray(b.paths) ? b.paths.map(String) : undefined,
+  }); } catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }); }
   return NextResponse.json({ ok: true });
 }
 
