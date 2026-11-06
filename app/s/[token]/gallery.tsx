@@ -230,7 +230,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
   function openEntry(e: Entry, ev: React.MouseEvent) {
     if (e.kind === "folder") { nav(e.rel); return; }
     if (ev.shiftKey || ev.metaKey || ev.ctrlKey) { select(e.rel, ev); return; }
-    const mi = media.indexOf(e);
+    const mi = media.findIndex((m) => m.rel === e.rel);
     if (mi >= 0) { if (view === "gallery") setGalIdx(mi); else openLb(mi); } else select(e.rel, ev);
   }
 
@@ -375,11 +375,11 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
                           onClick={(ev) => {
                             if (e.kind === "folder") { nav(e.rel); return; }
                             if (ev.shiftKey || ev.metaKey || ev.ctrlKey) { if (k === path) select(e.rel, ev); return; }
-                            if (k === path) { const mi = media.indexOf(e); if (mi >= 0) setGalIdx(mi); else select(e.rel, ev); }
+                            if (k === path) { const mi = media.findIndex((m) => m.rel === e.rel); if (mi >= 0) setGalIdx(mi); else select(e.rel, ev); }
                             else { setPendingPreview(e.rel); nav(k); }
                           }}
                           onContextMenu={(ev) => { ev.preventDefault(); if (k === path) select(e.rel, ev); }}
-                          onDoubleClick={() => { if (k === path && e.kind !== "folder") { const mi = media.indexOf(e); if (mi >= 0) openLb(mi); } }}>
+                          onDoubleClick={() => { if (k === path && e.kind !== "folder") { const mi = media.findIndex((m) => m.rel === e.rel); if (mi >= 0) openLb(mi); } }}>
                           {e.kind === "folder"
                             ? (e.cover ? <img className="fic" src={thumbUrl(e.cover, 120)} alt="" loading="lazy" /> : <svg className="fic" width="16" height="13" viewBox="0 0 28 22" aria-hidden="true"><path d="M1 4a2 2 0 0 1 2-2h7l3 3h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z" fill="currentColor" /></svg>)
                             : (e.kind === "image" || e.kind === "video" || e.kind === "raw") ? <span className="ficwrap"><img className="fic" src={thumbUrl(e.rel, 120)} alt="" loading="lazy" />{e.kind === "video" && <span className="cam xs"><Play /></span>}</span> : <span className="fic doc" />}
