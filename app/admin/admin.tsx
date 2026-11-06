@@ -130,7 +130,7 @@ function Detail({ d, onBack, onPatch, onDelete, onCopy, onRename, onSay }: { d: 
   }
   return <>
     <div className="row"><button className="btn sm" onClick={onBack}>← BACK</button></div>
-    <h2 className="h">{s.name.toUpperCase()}</h2>
+    <TitleEdit name={s.name} onSave={(n) => onPatch({ name: n })} />
     <div className="row"><div className="code" onClick={onCopy} style={{ cursor: "pointer", flex: 1 }}>{base()}/s/{s.token}</div><a className="btn pri" href={`/s/${s.token}`}>OPEN</a></div>
     <div className="field">
       <div className="row" style={{ justifyContent: "space-between" }}><label>{folders.length > 1 ? `FOLDERS IN THIS SHARE · ${folders.length}` : "FOLDER"}</label><button className="btn sm" onClick={() => setPick(true)}>+ ADD FOLDER</button></div>
@@ -329,6 +329,15 @@ function NewShare({ onDone, initial }: { onDone: (token: string) => void; initia
       <div className="stage"><img src={`/api/admin/thumb?p=${encodeURIComponent(big.rel)}&w=2000`} alt={big.name} /></div>
     </div>}
   </>;
+}
+
+/** Click-to-edit share title (shown to visitors). */
+function TitleEdit({ name, onSave, className = "h" }: { name: string; onSave: (n: string) => void; className?: string }) {
+  const [ed, setEd] = useState(false);
+  const [v, setV] = useState(name);
+  useEffect(() => { setV(name); }, [name]);
+  if (ed) return <input className={`tedit ${className}`} value={v} autoFocus aria-label="Share title" maxLength={120} onChange={(e) => setV(e.target.value)} onBlur={() => { setEd(false); const n = v.trim(); if (n && n !== name) onSave(n); }} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setV(name); setEd(false); } }} />;
+  return <h2 className={`${className} tclick`} title="Click to rename (what visitors see)" onClick={() => setEd(true)}>{name.toUpperCase()}<span className="tpen">✎</span></h2>;
 }
 
 function Roots() {

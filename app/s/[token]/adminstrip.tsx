@@ -21,6 +21,14 @@ export default function AdminStrip({ token, shareId, real, onChanged }: { token:
   const [dirty, setDirty] = useState(false);
   const [pick, setPick] = useState(false);
   const [upOpen, setUpOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState("");
+  async function saveTitle() {
+    setEditing(false);
+    const n = title.trim(); if (!s || !n || n === s.name) return;
+    const r = await fetch(`/api/admin/shares/${s.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: n }) });
+    say(r.ok ? "RENAMED" : "FAILED"); if (r.ok) setTimeout(() => location.reload(), 500);
+  }
   const [msg, setMsg] = useState("");
   const say = (m: string) => { setMsg(m); setTimeout(() => setMsg(""), 1800); };
 
@@ -75,7 +83,7 @@ export default function AdminStrip({ token, shareId, real, onChanged }: { token:
     <div className="astrip">
       <span className="alabel"><i />ADMIN</span>
       <a className="abtn ghost" href="/admin#shares">← SHARES</a>
-      {s && <a className="aname" href={`/admin#share/${s.id}`} title="Details + log">{s.name.toUpperCase()}</a>}
+      {s && (editing ? <input className="ain" style={{ width: 220 }} value={title} autoFocus aria-label="Share title" maxLength={120} onChange={(e) => setTitle(e.target.value)} onBlur={saveTitle} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { setTitle(s.name); setEditing(false); } }} /> : <span className="aname tclick" title="Click to rename · details + log in admin" onClick={() => { setTitle(s.name); setEditing(true); }}>{s.name.toUpperCase()}<span className="tpen">✎</span></span>)}
       <span className="asp" />
       {s && <>
         <span className={`apill ${mode === "view" ? "on" : ""}`} onClick={() => { setMode("view"); setDirty(true); }}>READ ONLY</span>
