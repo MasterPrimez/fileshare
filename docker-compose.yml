@@ -1,0 +1,18 @@
+services:
+  share:
+    build: .
+    container_name: share
+    restart: unless-stopped
+    ports:
+      - "3100:3000"            # existing stinenas tunnel points at <NAS-IP>:3100
+    environment:
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - APP_SECRET=${APP_SECRET}
+      - ADMIN_EMAILS=${ADMIN_EMAILS}
+    volumes:
+      - ./data:/app/data
+      # ---- ROOTS: one line per folder the app may see. Nothing else is reachable. ----
+      - "/home/Michael Stine/02 PROJECTS:/data/02-projects"
+      - "/home/Michael Stine/02 PROJET REFS:/data/02-project-refs"
+      - "/home/Michael Stine/03 PHOTOS:/data/03-photos"
+      # add :ro at the end of a line to make that root read-only (no edit shares)
