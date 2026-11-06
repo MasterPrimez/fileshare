@@ -1,6 +1,7 @@
 #!/bin/bash
 # Auto-deploy: pulls main from GitHub and rebuilds only when something changed.
 # Run by root cron every 2 min (see HANDOFF.md). Manual: sudo ./deploy.sh
+export PATH=/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin
 cd /volume1/docker/fileshare || exit 1
 git fetch -q origin main || { echo "$(date '+%F %T') fetch failed"; exit 1; }
 if [ "$1" = "force" ] || [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
