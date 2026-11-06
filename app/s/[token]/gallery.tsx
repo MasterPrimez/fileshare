@@ -2,6 +2,7 @@
 import Brand from "../../brand";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AdminStrip from "./adminstrip";
+import Tour from "./tour";
 import { CoverModal } from "../../admin/pickers";
 
 type Entry = { name: string; rel: string; kind: "folder" | "image" | "video" | "raw" | "audio" | "file"; size: number; mtime: number; count?: number; duration?: number | null; cover?: string | null; alias?: string | null; real?: string };
@@ -30,6 +31,14 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
   const [renaming, setRenaming] = useState<string | null>(null);
   const [pendingOpen, setPendingOpen] = useState<string | null>(null);
   const mounted = useRef(false);
+  const crumbsRef = useRef<HTMLElement>(null);
+  // breadcrumb sheen: each chip shows the same trail-wide reflection, clipped to itself
+  useEffect(() => {
+    const c = crumbsRef.current; if (!c) return;
+    const place = () => { const cr = c.getBoundingClientRect(); c.querySelectorAll<HTMLElement>("a, .cur").forEach((el) => { const r = el.getBoundingClientRect(); el.style.setProperty("--cw", `${cr.width}px`); el.style.setProperty("--cx", `${r.left - cr.left}px`); }); };
+    place(); window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [path, crumbInfo]);
   const isLib = token === "library";
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [isColl, setIsColl] = useState(false);
@@ -277,13 +286,14 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
             <h1 className="title">{(crumbs.length ? (crumbInfo[crumbs.length - 1]?.name || crumbs[crumbs.length - 1]) : name).toUpperCase()}</h1>
             {entries && <span className="sub">{isColl && !path ? `${folders.length} FOLDERS` : `${files.length} FILES`}{nImg ? ` · ${nImg} PHOTOS` : ""}{nVid ? ` · ${nVid} VIDEOS` : ""}{nAud ? ` · ${nAud} AUDIO` : ""}{newest ? ` · ${fmtDate(newest)}` : ""}</span>}
           </div>
-          <nav className="crumbs">
-            <a href="#" onClick={(e) => { e.preventDefault(); nav(""); }}>{name.toUpperCase()}</a>
+          <nav className="crumbs chips" ref={crumbsRef} key={path}>
+            <a href="#" onClick={(e) => { e.preventDefault(); nav(""); }} style={{ ["--w" as string]: crumbs.length ? 0.3 : 1 }}>{name.toUpperCase()}</a>
             {crumbs.map((c, i) => {
               const to = crumbs.slice(0, i + 1).join("/");
               const last = i === crumbs.length - 1;
               const label = (crumbInfo[i]?.name || c).toUpperCase();
-              return <span key={to} style={{ display: "contents" }}><span>›</span>{last ? <span className="cur">{label}</span> : <a href="#" onClick={(e) => { e.preventDefault(); nav(to); }}>{label}</a>}</span>;
+              const w = 0.3 + 0.7 * ((i + 1) / crumbs.length); // reflection brightens toward the current folder
+              return <span key={to} style={{ display: "contents" }}><span>›</span>{last ? <span className="cur" style={{ ["--w" as string]: w }}>{label}</span> : <a href="#" onClick={(e) => { e.preventDefault(); nav(to); }} style={{ ["--w" as string]: w }}>{label}</a>}</span>;
             })}
           </nav>
         </div>
@@ -448,6 +458,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
       )}
 
       {(toast || (busy && busy !== "zip")) && <div className="toast">{toast || busy.toUpperCase()}</div>}
+      {!admin && entries && <Tour />}
       {coverFor && <CoverModal folder={coverFor} onClose={(changed) => { setCoverFor(null); if (changed) { setLevels({}); reload(); } }} />}
     </div>
   );

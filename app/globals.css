@@ -559,3 +559,39 @@ tr:hover .apencil { opacity: 1; } .apencil:hover { color: var(--blue2); }
 .pcard.up { display: flex; align-items: center; justify-content: center; color: var(--dim); border-style: dashed; }
 .pcard-box { position: absolute; top: 8px; right: 8px; }
 .pcard-n { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 8px 7px; font-size: 11px; background: linear-gradient(transparent, rgba(12,12,13,.85)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ================= breadcrumb chips + trail sheen ================= */
+.crumbs.chips { position: relative; gap: 6px; align-items: center; }
+.crumbs.chips a, .crumbs.chips .cur { position: relative; overflow: hidden; display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line2); background: var(--panel); font-size: 11px; letter-spacing: .12em; color: var(--muted); text-decoration: none; transition: border-color .2s, color .2s, transform .2s var(--spring); }
+.crumbs.chips a:hover { border-color: var(--amber); color: var(--bright); transform: translateY(-1px); }
+.crumbs.chips > a:first-child::before { content: ""; width: 12px; height: 10px; background: currentColor; -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 22"><path d="M1 4a2 2 0 0 1 2-2h7l3 3h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z" fill="black"/></svg>') center/contain no-repeat; mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 22"><path d="M1 4a2 2 0 0 1 2-2h7l3 3h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z" fill="black"/></svg>') center/contain no-repeat; }
+/* one continuous reflection crosses the whole trail; each chip shows its slice (--cw/--cx set by the gallery) and brightens toward the current folder (--w) */
+.crumbs.chips a::after, .crumbs.chips .cur::after { content: ""; position: absolute; top: -40%; height: 180%; width: var(--cw, 600px); left: calc(-1 * var(--cx, 0px)); opacity: var(--w, .5); pointer-events: none;
+  background: radial-gradient(24% 170% at 50% 50%, rgba(255,242,220,.8) 0%, rgba(243,187,92,.55) 35%, rgba(243,187,92,.15) 70%, transparent 100%), linear-gradient(112deg, transparent 40%, rgba(243,187,92,.18) 46%, rgba(255,238,205,.4) 50%, rgba(243,187,92,.18) 54%, transparent 60%);
+  transform: translateX(-85%); animation: crumb-sheen 3s cubic-bezier(.4,.05,.3,.95) both; }
+@keyframes crumb-sheen { to { transform: translateX(85%); } }
+.crumbs.chips .cur { color: var(--bg); font-weight: 500; border-color: var(--amber); background: var(--amber); animation: crumb-fill .4s ease-out 2.1s both; }
+@keyframes crumb-fill { from { background: var(--panel); color: var(--muted); box-shadow: 0 0 0 0 rgba(232,163,61,.6); } 60% { box-shadow: 0 0 0 6px rgba(232,163,61,0); } to { background: var(--amber); color: var(--bg); box-shadow: 0 0 0 0 rgba(232,163,61,0); } }
+.crumbs.chips > span > span:first-child { color: var(--faint); font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .crumbs.chips a::after, .crumbs.chips .cur::after, .crumbs.chips .cur { animation: none; } }
+@media (max-width: 640px) { .crumbs.chips a, .crumbs.chips .cur { padding: 5px 9px; font-size: 10px; } }
+
+/* ================= first-visit tour ================= */
+.tour { position: fixed; inset: 0; z-index: 90; }
+.tour-ring { position: fixed; border: 1.5px solid var(--amber); border-radius: 10px; box-shadow: 0 0 0 9999px rgba(12,12,13,.72), 0 0 24px rgba(232,163,61,.45); animation: tour-ring .5s var(--glide); transition: left .35s var(--glide), top .35s var(--glide), width .35s var(--glide), height .35s var(--glide); pointer-events: none; }
+@keyframes tour-ring { from { transform: scale(.9); opacity: 0; } }
+.tour-bub { position: fixed; background: var(--panel2); border: 1px solid var(--line2); border-radius: 10px; padding: 16px 16px 14px; color: var(--text); box-shadow: 0 20px 50px rgba(0,0,0,.6); animation: tour-bub .45s var(--spring); }
+@keyframes tour-bub { from { transform: translateY(8px) scale(.96); opacity: 0; } }
+.tour-bub::before { content: ""; position: absolute; width: 10px; height: 10px; background: var(--panel2); border-left: 1px solid var(--line2); border-top: 1px solid var(--line2); transform: rotate(45deg); left: 28px; top: -6px; }
+.tour-bub.flip::before { left: auto; right: 28px; }
+.tour-bub.phone { bottom: calc(96px + env(safe-area-inset-bottom)); top: auto; } .tour-bub.phone::before { display: none; }
+.tour-bub .tn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; background: var(--amber); color: var(--bg); font-family: var(--display); font-size: 16px; margin-right: 10px; vertical-align: middle; }
+.tour-bub .tt { font-family: var(--display); font-size: 22px; letter-spacing: .04em; color: var(--bright); vertical-align: middle; }
+.tour-bub .tb { font-size: 11px; line-height: 1.6; color: var(--muted); margin: 8px 0 12px; letter-spacing: .04em; }
+.tour-bub .tf { display: flex; align-items: center; gap: 6px; }
+.tour-bub .td { width: 6px; height: 6px; border-radius: 50%; background: var(--line2); transition: background .2s; } .tour-bub .td.on { background: var(--amber); }
+.tour-bub .tsp { flex: 1; }
+.tour-bub .skip { font-size: 10px; letter-spacing: .1em; color: var(--dim); background: none; border: 0; cursor: pointer; padding: 6px 8px; }
+.tour-bub .skip:hover { color: var(--text); }
+.tour-bub .next { font-size: 10px; letter-spacing: .12em; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--amber); background: var(--amber); color: var(--bg); cursor: pointer; font-weight: 500; transition: transform .18s var(--spring), background .2s; }
+.tour-bub .next:hover { background: var(--amber2); } .tour-bub .next:active { transform: scale(.95); }

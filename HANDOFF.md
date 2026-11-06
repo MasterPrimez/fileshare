@@ -92,6 +92,8 @@ lib/db.ts                  better-sqlite3 schema (shares, events)
 - **Share folders**: `PATCH /api/admin/shares/:id { paths: [...] }` adds/removes folders (updateShare validates each). Detail page lists folders with rename / cover / remove + FolderPicker (`app/admin/pickers.tsx`, shared with the strip).
 - **History**: gallery folder = `?p=`, lightbox = `?f=`; `nav()` pushes state, popstate restores, so back/forward and deep links work. Admin tabs live in the hash (`#shares`, `#share/<id>`, `#new?p=`).
 - **Logo** is a link: visitor → share root, admin → /admin. `.brand .tag` has the Kinetics gradient-shimmer sweep.
+- **First-visit tour** (`app/s/[token]/tour.tsx`): 4 coach marks (views, filters, open, download), once per browser (`localStorage share:tour:v1`), visitors only. Bump the key to show it again after big UI changes.
+- **Breadcrumb chips** (`.crumbs.chips`): on every folder change a trail-wide sheen crosses the chips (per-chip `--cw/--cx` set in gallery.tsx), current folder fills amber. Michael may want to revisit this animation.
 - **Roots** page is read-only by design (locked badge). Changing roots = edit docker-compose.yml over SSH (see Share-Root-Folders.pdf). deploy.sh backs up compose across resets.
 
 ## Admin gallery + admin bypass
