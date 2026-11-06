@@ -62,7 +62,7 @@ export function listDir(shareRoot: string, sub: string): Entry[] | null {
         const names = fs.readdirSync(abs).filter((n) => !n.startsWith(".") && n !== "@eaDir");
         count = names.length;
         const set = getCover(path.posix.join(r.rel, d.name));
-        const pick = set && names.includes(set) ? set : names.filter((n) => kindOf(n) === "image").sort()[0];
+        const pick = set && coverExists(abs, set) ? set : names.filter((n) => kindOf(n) === "image").sort()[0];
         if (pick) cover = path.posix.join(rel, pick);
       } catch {}
       const alias = getAlias(path.posix.join(r.rel, d.name));
@@ -143,7 +143,10 @@ export function fmtDur(s: number) {
   return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
 }
 
-/** Folder covers, keyed by root-relative folder path ("02-projects/MotoCross"). Value = filename inside that folder. */
+/** Folder covers, keyed by root-relative folder path ("02-projects/MotoCross"). Value = path inside that folder ("IMG.jpg" or "Sub/IMG.jpg"). */
+function coverExists(folderAbs: string, rel: string) {
+  try { const abs = path.resolve(folderAbs, rel); return abs.startsWith(folderAbs + path.sep) && fs.statSync(abs).isFile(); } catch { return false; }
+}
 export function getCover(folderRel: string): string | null {
   const r = db.prepare("SELECT file FROM covers WHERE path = ?").get(folderRel) as { file: string } | undefined;
   return r?.file ?? null;
@@ -165,7 +168,7 @@ export function listCollection(items: { name: string; base: string }[]): Entry[]
       const names = fs.readdirSync(r.abs).filter((n) => !n.startsWith(".") && n !== "@eaDir");
       count = names.length;
       const set = getCover(r.rel);
-      const pick = set && names.includes(set) ? set : names.filter((n) => kindOf(n) === "image").sort()[0];
+      const pick = set && coverExists(r.abs, set) ? set : names.filter((n) => kindOf(n) === "image").sort()[0];
       if (pick) cover = path.posix.join(it.name, pick);
     } catch {}
     const alias = getAlias(r.rel);
@@ -195,7 +198,7 @@ export function coverFor(folderRel: string, depth = 0): string | null {
   try {
     const names = fs.readdirSync(r.abs).filter((n) => !n.startsWith(".") && n !== "@eaDir");
     const set = getCover(r.rel);
-    const pick = set && names.includes(set) ? set : names.filter((n) => kindOf(n) === "image").sort()[0];
+    const pick = set && coverExists(r.abs, set) ? set : names.filter((n) => kindOf(n) === "image").sort()[0];
     if (pick) return path.posix.join(r.rel, pick);
     if (depth < 2) for (const n of names.sort()) { try { if (fs.statSync(path.join(r.abs, n)).isDirectory()) { const c = coverFor(path.posix.join(r.rel, n), depth + 1); if (c) return c; } } catch {} }
   } catch {}

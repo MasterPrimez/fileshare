@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { isAdmin } from "@/lib/auth";
 import { listRoots, resolveSafe } from "@/lib/roots";
-import { kindOf, getCover } from "@/lib/files";
+import { kindOf, getCover, coverFor } from "@/lib/files";
 
 /** ?p=rootId/sub — list subfolders + files (admin folder picker). No p = list roots. */
 export async function GET(req: NextRequest) {
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const folders = ents.filter((d) => d.isDirectory()).map((d) => {
     const rel = path.posix.join(r.rel, d.name);
     let cover: string | null = null;
-    try { const names = fs.readdirSync(path.join(r.abs, d.name)).filter((n) => !n.startsWith(".")); const set = getCover(rel); const pick = set && names.includes(set) ? set : names.filter((n) => kindOf(n) === "image").sort()[0]; if (pick) cover = path.posix.join(rel, pick); } catch {}
+    cover = coverFor(rel);
     return { name: d.name, rel, cover };
   }).sort((a, b) => a.name.localeCompare(b.name));
   const files = ents.filter((d) => d.isFile()).map((d) => {

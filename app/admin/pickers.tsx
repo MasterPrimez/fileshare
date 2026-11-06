@@ -22,25 +22,27 @@ export function CoverPicker({ folder, onChange }: { folder: string; onChange?: (
   const [files, setFiles] = useState<AF[]>([]);
   const [subs, setSubs] = useState<AFolder[]>([]);
   const [cover, setCover] = useState<string | null>(null);
-  const load = useCallback(async (p: string) => { const r = await fetch(`/api/admin/browse?p=${encodeURIComponent(p)}`); if (r.ok) { const j = await r.json(); setCur(j.path); setFiles((j.files || []).filter((f: AF) => f.kind === "image")); setSubs(j.folders || []); setCover(j.cover || null); } }, []);
+  // `cover` is always the TARGET folder's cover, as a path relative to it (may point into a subfolder)
+  const load = useCallback(async (p: string) => { const r = await fetch(`/api/admin/browse?p=${encodeURIComponent(p)}`); if (r.ok) { const j = await r.json(); setCur(j.path); setFiles((j.files || []).filter((f: AF) => f.kind === "image")); setSubs(j.folders || []); if (p === folder) setCover(j.cover || null); } }, [folder]);
   useEffect(() => { load(folder); }, [folder, load]);
-  async function set(file: string | null) { await fetch("/api/admin/cover", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: cur, file }) }); setCover(file); onChange?.(cur, file); }
+  const relOf = (name: string) => (cur === folder ? name : `${cur.slice(folder.length + 1)}/${name}`);
+  async function set(file: string | null) { await fetch("/api/admin/cover", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: folder, file }) }); setCover(file); onChange?.(folder, file); }
   const inside = cur !== folder;
   return (
     <div className="field">
       <div className="row">
         {inside && <button className="btn sm" onClick={() => load(cur.split("/").slice(0, -1).join("/"))}>↑ UP</button>}
-        <span className="sub">{cur.toUpperCase()} · {cover ? `COVER: ${cover}` : "COVER: AUTO (FIRST PHOTO)"}</span>
+        <span className="sub">{inside ? `${folder.split("/").pop()?.toUpperCase()} › ${cur.slice(folder.length + 1).toUpperCase()}` : cur.toUpperCase()} · {cover ? `COVER: ${cover}` : "COVER: AUTO (FIRST PHOTO)"}</span>
       </div>
       {!!subs.length && <div className="row" style={{ gap: 6 }}>{subs.map((f) => <button key={f.rel} className="pill" onClick={() => load(f.rel)}>▸ {f.name}</button>)}</div>}
-      {!files.length && <span className="sub" style={{ color: "var(--faint)" }}>NO PHOTOS AT THIS LEVEL{subs.length ? " — OPEN A SUBFOLDER TO SET ITS COVER" : ""}</span>}
+      {!files.length && <span className="sub" style={{ color: "var(--faint)" }}>NO PHOTOS AT THIS LEVEL{subs.length ? " — OPEN A SUBFOLDER AND PICK ONE FROM THERE" : ""}</span>}
       <div className="ptiles" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", maxHeight: 320 }}>
-        {files.map((f) => (
-          <button key={f.rel} className={`tile ${cover === f.name ? "iscover" : ""}`} onClick={() => set(cover === f.name ? null : f.name)} aria-label={`Set ${f.name} as cover`} title={cover === f.name ? "Click to clear" : "Set as cover"}>
-            <span className={`star ${cover === f.name ? "on" : ""}`}><Star on={cover === f.name} /></span>
+        {files.map((f) => { const rel = relOf(f.name); const on = cover === rel; return (
+          <button key={f.rel} className={`tile ${on ? "iscover" : ""}`} onClick={() => set(on ? null : rel)} aria-label={`Set ${f.name} as cover`} title={on ? "Click to clear" : "Set as cover"}>
+            <span className={`star ${on ? "on" : ""}`}><Star on={on} /></span>
             <AThumb src={`/api/admin/thumb?p=${encodeURIComponent(f.rel)}&w=300`} ext={f.name.split(".").pop() || ""} />
           </button>
-        ))}
+        ); })}
       </div>
     </div>
   );
