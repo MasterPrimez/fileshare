@@ -361,7 +361,7 @@ html, body { transition: background .25s, color .25s; }
   .hdr .meta { white-space: nowrap; }
   .hdr .meta span:first-child { display: none; } /* expiry lives on the gate + footer on phones */
   .hdr .pill { white-space: nowrap; }
-  .tiles { grid-template-columns: repeat(auto-fill, minmax(min(var(--tile, 220px), calc(50% - 6px)), 1fr)) !important; }
+  .tiles { grid-template-columns: repeat(min(var(--cols, 2), 3), minmax(0, 1fr)) !important; }
   .stickyhd.condensed .actions .btn.pri { white-space: nowrap; }
 }
 
@@ -610,3 +610,6 @@ tr.hid td { opacity: .45; }
 .btn.blue:hover { color: #0c0c0d; border-color: var(--blue); }
 .ahint { color: var(--blue2); }
 @media (max-width: 640px) { .tile:not(.folder) .ahover.file { opacity: 1; transform: none; } }
+
+/* grid density: slider sets --cols (1 = full width … 8) */
+main.grid .tiles[style*="--cols"] { grid-template-columns: repeat(var(--cols, 6), minmax(0, 1fr)); transition: gap .2s; }

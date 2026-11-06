@@ -48,7 +48,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
   const [toast, setToast] = useState("");
   const [busy, setBusy] = useState("");
   const [view, setView] = useState<View>("grid");
-  const [size, setSize] = useState(220);
+  const [cols, setCols] = useState(6); // tiles across: 1 = full width … 8 = smallest (phone 1–3)
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [galIdx, setGalIdx] = useState(0);
   const [condensed, setCondensed] = useState(false);
@@ -66,13 +66,13 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
   // restore prefs
   useEffect(() => {
     const v = ls.get("share:view") as View | null; if (v) setView(v);
-    const s = ls.get("share:size"); if (s) setSize(Number(s));
+    const s = ls.get("share:cols"); if (s) setCols(Math.min(8, Math.max(1, Number(s))));
     const t = ls.get("share:theme") as "dark" | "light" | null;
     if (t) setTheme(t); else if (window.matchMedia?.("(prefers-color-scheme: light)").matches) setTheme("light");
   }, []);
   useEffect(() => { document.documentElement.dataset.theme = theme; ls.set("share:theme", theme); }, [theme]);
   useEffect(() => { ls.set("share:view", view); }, [view]);
-  useEffect(() => { ls.set("share:size", String(size)); }, [size]);
+  useEffect(() => { ls.set("share:cols", String(cols)); }, [cols]);
 
   const load = useCallback(async (p: string, quiet = false) => {
     if (!quiet) setEntries(null);
@@ -351,7 +351,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
         </div>
         </div>
         {(view === "grid" || view === "gallery") && (
-          <label className="slider"><IGrid small /><input type="range" min={120} max={480} step={10} value={size} onChange={(e) => setSize(Number(e.target.value))} aria-label="Thumbnail size" /><IGrid /></label>
+          <label className="slider" title={`${cols} across`}><IGrid small /><input type="range" min={1} max={8} step={1} value={9 - cols} onChange={(e) => setCols(9 - Number(e.target.value))} aria-label="Tiles across" /><IGrid /></label>
         )}
         <span className="sub" style={{ marginLeft: "auto" }}>{admin && nHidden ? <span className="ahint">{nHidden} HIDDEN FROM VISITORS · </span> : null}{sel.size ? `${sel.size} SELECTED` : filters.size ? `SHOWING ${[...filters].map((f) => f.toUpperCase()).join(" + ")} · ${files.length}` : "CLICK TO OPEN · ⇧ SHIFT-CLICK RANGE · ⌘-CLICK TOGGLE"}</span>
       </div>
@@ -362,7 +362,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
         {entries && !entries.length && <div className="sub">EMPTY FOLDER</div>}
 
         {view === "grid" && (
-          <div className="tiles" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${size}px, 1fr))`, ["--tile" as string]: `${size}px` }}>
+          <div className="tiles" style={{ ["--cols" as string]: cols }}>
             {all.map((e) => <Tile key={e.rel} e={e} isSel={sel.has(e.rel)} thumb={thumbUrl(e.rel)} onOpen={openEntry} onSelect={select} adm={adminTile} />)}
           </div>
         )}
@@ -449,7 +449,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
               {galIdx < media.length - 1 && <button className="nav r" onClick={(e) => { e.stopPropagation(); setGalIdx(galIdx + 1); }} aria-label="Next">›</button>}
             </div>
             {gal && <div className="info"><b>{gal.name}</b><span>{galIdx + 1} / {media.length} · {fmtSize(gal.size)}</span><a className="btn sm" href={fileUrl(gal.rel, true)}>DOWNLOAD</a></div>}
-            <div className="strip" style={{ height: Math.max(72, Math.round(size * 0.45)) }}>
+            <div className="strip" style={{ height: Math.max(72, Math.round((9 - cols) * 26)) }}>
               {folders.map((f) => <button key={f.rel} className="st folder" onClick={() => nav(f.rel)} title={f.name}>{f.cover && <img src={thumbUrl(f.cover, 240)} alt="" loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: .45 }} />}<svg width="22" height="18" viewBox="0 0 28 22" aria-hidden="true"><path d="M1 4a2 2 0 0 1 2-2h7l3 3h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2z" fill="none" stroke="var(--amber)" strokeWidth="1.5" /></svg><span>{f.name}</span></button>)}
               {media.map((m, i) => <button key={m.rel} className={`st ${i === galIdx ? "cur" : ""} ${sel.has(m.rel) ? "sel" : ""}`} onClick={(ev) => { if (ev.shiftKey || ev.metaKey || ev.ctrlKey) select(m.rel, ev); else setGalIdx(i); }} onContextMenu={(ev) => { ev.preventDefault(); select(m.rel, ev); }} title={m.name}>{m.kind === "audio" ? <span className="noimg" style={{ fontSize: 14 }}><IAudio /></span> : <img src={thumbUrl(m.rel, 240)} alt="" loading="lazy" />}{m.kind === "video" && <span className="cam st-cam"><Play /></span>}{sel.has(m.rel) && <span className="box"><Check /></span>}</button>)}
             </div>
