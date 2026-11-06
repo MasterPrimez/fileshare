@@ -102,6 +102,9 @@ Shares page has grid (cover cards, hover → Open/Edit/Copy) and list views. Log
 ## Collections (multi-folder shares)
 `shares.paths` = JSON array of root-relative folders (null = single-folder share using `path`). Visitor sees each as a top-level folder named by basename (`shareItems()` de-dupes). `mapSub(share, sub)` in lib/shares.ts resolves a visitor path's first segment to the right base; all visitor routes go through it. At the collection top: no upload/delete; Download All zips every folder. Admin: browse → "+ Add to collection" per folder; phone: "+ ADD" on the picker.
 
+## Visitor uploads (per share)
+`shares.upload_path` (root-relative folder, null = off) + `shares.upload_limit` (bytes, null = unlimited). Set in New Share / share detail / blue strip (`UploadSettings` in app/admin/pickers.tsx); default landing folder `<share folder>/Uploads`. Visitor side `app/s/[token]/upload.tsx`: green UPLOAD button (only when on), drag-anywhere splash, album name required (remembered per device), native multi-select on phones. Files go up in 20 MB chunks to `POST /api/s/[token]/upload` (appends to `data/upload-tmp/*.part`, moves into `<upload_path>/<album>/` on the last chunk) so Cloudflare's 100 MB request cap never bites. Add-only: duplicates become `name 2.ext`; visitors can't delete. Quota checked on the first chunk (`folderSize`). Every file logs an `upload` event with bytes + visitor. HEIC from iPhones is stored as-is (no thumbnail; sharp has no libheif in the image).
+
 ## Hidden files (admin)
 `hidden` table: root-relative file path. Admin hides a photo from the ★/👁 hover control or by selecting + HIDE (blue). Hidden files vanish for every visitor in every share: list, thumb, file, zip (`isHidden` checks in lib/files.ts + the visitor routes). Admin sees them dimmed with a HIDDEN badge; the eye restores. Disk is never touched. API: `PATCH /api/admin/hide {paths, hidden}`.
 

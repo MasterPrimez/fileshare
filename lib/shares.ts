@@ -14,6 +14,8 @@ export function createShare(input: {
   visitLimit?: number | null;
   askName?: boolean;
   paths?: string[];
+  uploadPath?: string | null;
+  uploadLimit?: number | null;
 }): Share {
   const list = (input.paths && input.paths.length ? input.paths : [input.path]).filter(Boolean);
   for (const p of list) if (!resolveSafe(p)) throw new Error("Path is not inside a mounted root");
@@ -25,6 +27,7 @@ export function createShare(input: {
     `INSERT INTO shares (id, token, name, path, mode, password_hash, password_enc, expires_at, visit_limit, created_at, ask_name, paths)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
   ).run(id, token, input.name, list[0], input.mode, hash, input.password ? seal(input.password) : null, input.expiresAt ?? null, input.visitLimit ?? null, Date.now(), input.askName ? 1 : 0, isCollection ? JSON.stringify(list) : null);
+  if (input.uploadPath !== undefined || input.uploadLimit !== undefined) updateShare(id, { uploadPath: input.uploadPath, uploadLimit: input.uploadLimit });
   return getShareById(id)!;
 }
 
@@ -41,14 +44,14 @@ export function getShareByToken(token: string): Share | undefined {
 export const LIBRARY = "library";
 export function libraryShare(): Share {
   const roots = listRoots().map((r) => r.id);
-  return { id: LIBRARY, token: LIBRARY, name: "Library", path: roots[0] || "", mode: "view", password_hash: null, expires_at: null, visit_limit: null, visits: 0, revoked: 0, created_at: 0, ask_name: 0, password_enc: null, paths: JSON.stringify(roots) };
+  return { id: LIBRARY, token: LIBRARY, name: "Library", path: roots[0] || "", mode: "view", password_hash: null, expires_at: null, visit_limit: null, visits: 0, revoked: 0, created_at: 0, ask_name: 0, password_enc: null, paths: JSON.stringify(roots), upload_path: null, upload_limit: null };
 }
 
 export function listShares(): Share[] {
   return db.prepare("SELECT * FROM shares ORDER BY created_at DESC").all() as Share[];
 }
 
-export function updateShare(id: string, patch: Partial<{ mode: "view" | "edit"; password: string | null; expiresAt: number | null; visitLimit: number | null; revoked: boolean; name: string; askName: boolean; paths: string[] }>) {
+export function updateShare(id: string, patch: Partial<{ mode: "view" | "edit"; password: string | null; expiresAt: number | null; visitLimit: number | null; revoked: boolean; name: string; askName: boolean; paths: string[]; uploadPath: string | null; uploadLimit: number | null }>) {
   const sets: string[] = [];
   const vals: unknown[] = [];
   if (patch.paths) {
@@ -65,6 +68,11 @@ export function updateShare(id: string, patch: Partial<{ mode: "view" | "edit"; 
   if (patch.visitLimit !== undefined) { sets.push("visit_limit = ?"); vals.push(patch.visitLimit); }
   if (patch.revoked !== undefined) { sets.push("revoked = ?"); vals.push(patch.revoked ? 1 : 0); }
   if (patch.askName !== undefined) { sets.push("ask_name = ?"); vals.push(patch.askName ? 1 : 0); }
+  if (patch.uploadPath !== undefined) {
+    if (patch.uploadPath) { const p = patch.uploadPath.replace(/^\/+|\/+$/g, ""); if (!resolveSafe(p) || !p.includes("/")) throw new Error("Upload folder must be inside a root"); sets.push("upload_path = ?"); vals.push(p); }
+    else { sets.push("upload_path = ?"); vals.push(null); }
+  }
+  if (patch.uploadLimit !== undefined) { sets.push("upload_limit = ?"); vals.push(patch.uploadLimit && patch.uploadLimit > 0 ? Math.round(patch.uploadLimit) : null); }
   if (!sets.length) return;
   vals.push(id);
   db.prepare(`UPDATE shares SET ${sets.join(", ")} WHERE id = ?`).run(...vals);

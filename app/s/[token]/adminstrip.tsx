@@ -1,8 +1,8 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { FolderPicker } from "../../admin/pickers";
+import { FolderPicker, UploadSettings } from "../../admin/pickers";
 
-export type AdminShare = { id: string; token: string; name: string; mode: "view" | "edit"; has_password: boolean; password: string | null; expires_at: number | null; revoked: number; folders: string[]; status?: string; ask_name: number };
+export type AdminShare = { id: string; token: string; name: string; mode: "view" | "edit"; has_password: boolean; password: string | null; expires_at: number | null; revoked: number; folders: string[]; status?: string; ask_name: number; upload_path?: string | null; upload_limit?: number | null; uploadUsed?: number };
 const DAY = 86400000;
 
 /**
@@ -20,6 +20,7 @@ export default function AdminStrip({ token, shareId, real, onChanged }: { token:
   const [pwOn, setPwOn] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [pick, setPick] = useState(false);
+  const [upOpen, setUpOpen] = useState(false);
   const [msg, setMsg] = useState("");
   const say = (m: string) => { setMsg(m); setTimeout(() => setMsg(""), 1800); };
 
@@ -86,11 +87,13 @@ export default function AdminStrip({ token, shareId, real, onChanged }: { token:
         <span className={`apill ${pwOn ? "on" : ""}`} onClick={() => { setPwOn(!pwOn); setDirty(true); }}>{pwOn ? "ON" : "OFF"}</span>
         {pwOn && <input className="ain" value={pw} onChange={(e) => { setPw(e.target.value); setDirty(true); }} placeholder="password" aria-label="Share password" />}
         <button className="abtn" onClick={() => setPick(true)}>+ FOLDER</button>
+        <button className={`abtn ${s.upload_path ? "pri" : ""}`} onClick={() => setUpOpen(!upOpen)} title="Visitor uploads">{s.upload_path ? "UPLOADS ON" : "UPLOADS"}</button>
         <button className="abtn" onClick={copy}>COPY LINK</button>
         <button className={`abtn ${dirty ? "pri" : ""}`} disabled={!dirty || (pwOn && !pw)} onClick={save}>SAVE</button>
       </>}
       {msg && <span className="amsg">{msg}</span>}
       {pick && s && <FolderPicker exclude={s.folders} onDone={addFolders} onCancel={() => setPick(false)} />}
+      {upOpen && s && <div className="apanel"><UploadSettings compact on={!!s.upload_path} path={s.upload_path || null} limit={s.upload_limit || null} used={s.uploadUsed} suggest={s.folders[0]} onChange={async (v) => { const r = await fetch(`/api/admin/shares/${s.id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ uploadPath: v.on ? v.path : null, uploadLimit: v.on ? v.limit : null }) }); say(r.ok ? "SAVED" : "FAILED"); load(); onChanged(); }} /></div>}
     </div>
   );
 }

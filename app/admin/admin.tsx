@@ -3,9 +3,9 @@ import Brand from "../brand";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Log, Ev, Vis } from "./log";
 import Dashboard from "./dashboard";
-import { CoverPicker, FolderPicker, AThumb, AF, fmtSz, Star } from "./pickers";
+import { CoverPicker, FolderPicker, AThumb, AF, fmtSz, Star, UploadSettings } from "./pickers";
 
-type ShareRow = { id: string; token: string; name: string; path: string; paths?: string | null; folders?: string[]; cover?: string | null; aliases?: Record<string, string>; covers?: Record<string, string>; mode: "view" | "edit"; has_password: boolean; password?: string | null; ask_name: number; expires_at: number | null; visit_limit: number | null; visits: number; revoked: number; created_at: number; status: string; counts: Record<string, number> };
+type ShareRow = { id: string; token: string; name: string; path: string; paths?: string | null; folders?: string[]; cover?: string | null; aliases?: Record<string, string>; covers?: Record<string, string>; mode: "view" | "edit"; has_password: boolean; password?: string | null; ask_name: number; expires_at: number | null; visit_limit: number | null; visits: number; revoked: number; created_at: number; status: string; counts: Record<string, number>; upload_path?: string | null; upload_limit?: number | null; uploadUsed?: number };
 
 const fmt = (ms: number) => new Date(ms).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const base = () => (typeof window !== "undefined" ? window.location.origin : "");
@@ -156,6 +156,7 @@ function Detail({ d, onBack, onPatch, onDelete, onCopy, onRename, onSay }: { d: 
       <button className={`btn sm ${s.revoked ? "" : "danger"}`} onClick={() => onPatch({ revoked: !s.revoked })}>{s.revoked ? "RESTORE LINK" : "REVOKE LINK"}</button>
       <button className="btn sm danger" onClick={onDelete}>DELETE</button>
     </div>
+    <UploadSettings on={!!s.upload_path} path={s.upload_path || null} limit={s.upload_limit || null} used={s.uploadUsed} suggest={folders[0]} onChange={(v) => onPatch({ uploadPath: v.on ? v.path : null, uploadLimit: v.on ? v.limit : null })} />
     <div className="form" style={{ maxWidth: 720 }}>
       <div className="row" style={{ alignItems: "flex-start" }}>
         <div className="field" style={{ flex: 1 }}><label>EXPIRES</label><div className="row"><input className="in" type="date" value={exp} onChange={(e) => setExp(e.target.value)} style={{ width: 180 }} />{(exp || s.expires_at) && <button className="btn sm" onClick={() => setExp("")}>NEVER</button>}</div></div>
@@ -192,6 +193,7 @@ function NewShare({ onDone, initial }: { onDone: (token: string) => void; initia
   const [pw, setPw] = useState("");
   const [exp, setExp] = useState<"24H" | "7D" | "30D" | "NEVER">("7D");
   const [askName, setAskName] = useState(false);
+  const [upl, setUpl] = useState<{ on: boolean; path: string | null; limit: number | null }>({ on: false, path: null, limit: null });
   const [err, setErr] = useState("");
   const [big, setBig] = useState<AF | null>(null);
   const [pview, setPview] = useState<"list" | "columns" | "grid">(() => (typeof window !== "undefined" && (localStorage.getItem("admin:picker") as "list" | "columns" | "grid")) || "columns");
@@ -225,7 +227,7 @@ function NewShare({ onDone, initial }: { onDone: (token: string) => void; initia
 
   async function create() {
     setErr("");
-    const r = await fetch("/api/admin/shares", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, path: coll.length ? coll[0].rel : cur, paths: coll.length ? coll.map((c) => c.rel) : undefined, mode, password: pwOn && pw ? pw : undefined, expiresAt: exp === "NEVER" ? null : Date.now() + ({ "24H": 1, "7D": 7, "30D": 30 }[exp]) * 86400000, askName: pwOn || askName }) });
+    const r = await fetch("/api/admin/shares", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, path: coll.length ? coll[0].rel : cur, paths: coll.length ? coll.map((c) => c.rel) : undefined, mode, password: pwOn && pw ? pw : undefined, expiresAt: exp === "NEVER" ? null : Date.now() + ({ "24H": 1, "7D": 7, "30D": 30 }[exp]) * 86400000, askName: pwOn || askName, uploadPath: upl.on ? (upl.path || `${coll.length ? coll[0].rel : cur}/Uploads`) : null, uploadLimit: upl.on ? upl.limit : null }) });
     const j = await r.json();
     if (!r.ok) { setErr(j.error || "FAILED"); return; }
     onDone(j.share.token);
@@ -289,6 +291,7 @@ function NewShare({ onDone, initial }: { onDone: (token: string) => void; initia
         </div>
         <div className="field"><label>NAME (SHOWN TO VISITOR)</label><input className="in" value={name} onChange={(e) => setName(e.target.value)} /></div>
         <div className="field"><label>MODE</label><div className="row"><button className={`pill ${mode === "view" ? "on" : ""}`} onClick={() => setMode("view")}>READ ONLY</button><button className={`pill ${mode === "edit" ? "on" : ""}`} onClick={() => setMode("edit")}>EDIT</button></div></div>
+        <UploadSettings on={upl.on} path={upl.path} limit={upl.limit} suggest={coll.length ? coll[0].rel : cur} onChange={setUpl} />
         <div className="field"><label>EXPIRES</label><div className="row" style={{ gap: 6 }}>{(["24H", "7D", "30D", "NEVER"] as const).map((e) => <button key={e} className={`pill ${exp === e ? "on" : ""}`} style={{ flex: 1 }} onClick={() => setExp(e)}>{e}</button>)}</div></div>
         <div className="opt"><span><div className="n">Password</div><div className="hint">{pwOn ? "REQUIRED TO OPEN" : "ANYONE WITH THE LINK"}</div></span><button className={`sw ${pwOn ? "on" : ""}`} onClick={() => setPwOn(!pwOn)} aria-label="Password"><span /></button></div>
         {pwOn && <input className="in" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="password" aria-label="Password" autoFocus />}

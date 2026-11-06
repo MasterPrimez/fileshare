@@ -57,6 +57,8 @@ if (!cols("shares").includes("ask_name")) db.exec("ALTER TABLE shares ADD COLUMN
 if (!cols("events").includes("visitor_id")) db.exec("ALTER TABLE events ADD COLUMN visitor_id TEXT");
 if (!cols("shares").includes("password_enc")) db.exec("ALTER TABLE shares ADD COLUMN password_enc TEXT");
 if (!cols("shares").includes("paths")) db.exec("ALTER TABLE shares ADD COLUMN paths TEXT");
+if (!cols("shares").includes("upload_path")) db.exec("ALTER TABLE shares ADD COLUMN upload_path TEXT");
+if (!cols("shares").includes("upload_limit")) db.exec("ALTER TABLE shares ADD COLUMN upload_limit INTEGER");
 if (!cols("events").includes("bytes")) db.exec("ALTER TABLE events ADD COLUMN bytes INTEGER");
 
 export type Share = {
@@ -72,6 +74,8 @@ export type Share = {
   revoked: number;
   created_at: number;
   ask_name: number;
+  upload_path: string | null; // root-relative folder visitors may upload into (null = uploads off)
+  upload_limit: number | null; // bytes; null = unlimited
   password_enc: string | null;
   paths: string | null; // JSON array for collections; null = single folder in `path`
 };

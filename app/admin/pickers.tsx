@@ -92,3 +92,27 @@ export function CoverModal({ folder, onClose }: { folder: string; onClose: (chan
     </div>
   );
 }
+
+/** Visitor-uploads settings block (New Share + Detail + admin strip). Value is root-relative folder or null, limit in bytes. */
+export function UploadSettings({ on, path, limit, used, suggest, onChange, compact }: { on: boolean; path: string | null; limit: number | null; used?: number; suggest: string; onChange: (v: { on: boolean; path: string | null; limit: number | null }) => void; compact?: boolean }) {
+  const [pick, setPick] = useState(false);
+  const gb = limit ? Math.round((limit / 1024 ** 3) * 10) / 10 : "";
+  const dest = path || `${suggest}/Uploads`;
+  const pct = limit && used ? Math.min(100, (used / limit) * 100) : 0;
+  return (
+    <div className={`upsec ${on ? "on" : ""} ${compact ? "compact" : ""}`}>
+      <div className="hd"><b>VISITOR UPLOADS</b><button className={`sw ${on ? "on" : ""}`} onClick={() => onChange({ on: !on, path: path || dest, limit })} aria-label="Allow visitor uploads"><span /></button></div>
+      {on && <>
+        <div className="field"><label>FILES LAND IN</label>
+          <div className="dest"><span className="l">📁</span><span className="p">{dest.split("/").join(" / ")} / <i>album the visitor names</i></span><button className="btn sm" onClick={() => setPick(true)}>CHANGE</button></div>
+        </div>
+        <div className="field"><label>SIZE LIMIT</label>
+          <div className="lim"><input value={gb} inputMode="decimal" placeholder="∞" aria-label="Limit in GB" onChange={(e) => { const v = parseFloat(e.target.value); onChange({ on, path: path || dest, limit: Number.isFinite(v) && v > 0 ? Math.round(v * 1024 ** 3) : null }); }} /><span className="sub">GB</span>
+            <div className="usage"><i style={{ width: `${pct}%` }} /></div><span className="sub">{used !== undefined ? `${fmtSz(used)} USED` : limit ? "" : "NO LIMIT"}</span></div>
+        </div>
+        {!compact && <div className="note">VISITORS GET A GREEN UPLOAD BUTTON (AND CAN DRAG FILES ONTO THE PAGE). EACH VISITOR NAMES AN ALBUM; IT BECOMES A SUBFOLDER EVERYONE WITH THE LINK CAN SEE. ADD-ONLY: NO DELETING OR OVERWRITING. EVERY UPLOAD IS LOGGED PER VISITOR.</div>}
+      </>}
+      {pick && <FolderPicker label="USE" onDone={(rels) => { setPick(false); if (rels[0]) onChange({ on, path: rels[0], limit }); }} onCancel={() => setPick(false)} />}
+    </div>
+  );
+}

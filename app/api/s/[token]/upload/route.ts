@@ -1,0 +1,70 @@
+import { NextRequest, NextResponse } from "next/server";
+import fs from "node:fs";
+import path from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { openShare } from "@/lib/access";
+import { resolveSafe } from "@/lib/roots";
+import { folderSize, safeName } from "@/lib/files";
+import { logEvent } from "@/lib/shares";
+import { visitorId } from "@/lib/auth";
+
+/**
+ * Visitor uploads (chunked, so big videos pass Cloudflare's per-request limit).
+ *   GET                       → { on, album?, used, limit }   quota + whether uploads are enabled
+ *   POST ?album=&name=&size=&id=&chunk=&chunks=   body = one chunk (≤ 20 MB)
+ *        → { ok, done, rel }   when the last chunk lands the file is moved into <upload_path>/<album>/<name>
+ * Add-only: visitors never overwrite (duplicates get " 2", " 3" …) and never delete.
+ */
+const TMP = () => { const d = path.join(process.env.APP_DATA || "/app/data", "upload-tmp"); fs.mkdirSync(d, { recursive: true }); return d; };
+const CHUNK_MAX = 25 * 1024 * 1024;
+
+function dest(share: { upload_path: string | null }) { return share.upload_path ? resolveSafe(share.upload_path) : null; }
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
+  const r = await openShare(token);
+  if ("error" in r) return r.error;
+  const d = dest(r.share);
+  if (!d) return NextResponse.json({ on: false });
+  return NextResponse.json({ on: true, used: folderSize(d.rel), limit: r.share.upload_limit, name: r.share.name });
+}
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
+  const r = await openShare(token);
+  if ("error" in r) return r.error;
+  const d = dest(r.share);
+  if (!d) return NextResponse.json({ error: "uploads are off" }, { status: 403 });
+  const q = req.nextUrl.searchParams;
+  const album = safeName(q.get("album") || "", "Uploads");
+  const name = safeName(q.get("name") || "", "file");
+  const size = Number(q.get("size") || 0), chunk = Number(q.get("chunk") || 0), chunks = Math.max(1, Number(q.get("chunks") || 1));
+  const id = (q.get("id") || "").replace(/[^a-z0-9-]/gi, "").slice(0, 64);
+  if (!id || !req.body || !Number.isFinite(size) || size < 0 || chunk < 0 || chunk >= chunks) return NextResponse.json({ error: "bad" }, { status: 400 });
+  // quota check on the first chunk (whole file counted up front)
+  if (chunk === 0 && r.share.upload_limit) {
+    const used = folderSize(d.rel);
+    if (used + size > r.share.upload_limit) return NextResponse.json({ error: "full", used, limit: r.share.upload_limit }, { status: 413 });
+  }
+  const vid = (await visitorId()) || "anon";
+  const tmp = path.join(TMP(), `${vid.replace(/[^a-z0-9]/gi, "").slice(0, 32)}-${id}.part`);
+  if (chunk === 0 && fs.existsSync(tmp)) fs.unlinkSync(tmp);
+  // append this chunk (bounded)
+  let got = 0;
+  const ws = fs.createWriteStream(tmp, { flags: "a" });
+  const limiter = new Transform({ transform(c, _e, cb) { got += c.length; if (got > CHUNK_MAX) return cb(new Error("chunk too big")); cb(null, c); } });
+  try { await pipeline(Readable.fromWeb(req.body as never), limiter, ws); } catch { try { fs.unlinkSync(tmp); } catch {} return NextResponse.json({ error: "chunk" }, { status: 400 }); }
+  if (chunk < chunks - 1) return NextResponse.json({ ok: true, done: false });
+  // last chunk: validate size, move into place without overwriting
+  const st = fs.statSync(tmp);
+  if (size && st.size !== size) { fs.unlinkSync(tmp); return NextResponse.json({ error: "size mismatch" }, { status: 400 }); }
+  const albumAbs = path.join(d.abs, album);
+  fs.mkdirSync(albumAbs, { recursive: true });
+  const ext = path.extname(name), stem = name.slice(0, name.length - ext.length);
+  let final = path.join(albumAbs, name), n = 2;
+  while (fs.existsSync(final)) final = path.join(albumAbs, `${stem} ${n++}${ext}`);
+  fs.renameSync(tmp, final);
+  logEvent(r.share.id, "upload", `${album}/${path.basename(final)}`, req, vid === "anon" ? null : vid, st.size);
+  return NextResponse.json({ ok: true, done: true, rel: `${album}/${path.basename(final)}` });
+}

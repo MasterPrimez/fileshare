@@ -216,3 +216,14 @@ export function coverFor(folderRel: string, depth = 0): string | null {
   } catch {}
   return null;
 }
+
+/** Total bytes under a root-relative folder (0 if missing). Used for upload quotas. */
+export function folderSize(folderRel: string): number {
+  const r = resolveSafe(folderRel); if (!r || !fs.existsSync(r.abs)) return 0;
+  try { return walk(r.abs).reduce((a, f) => a + f.size, 0); } catch { return 0; }
+}
+/** Safe folder/file name for visitor-created albums + uploads. */
+export function safeName(n: string, fallback = "untitled") {
+  const s = n.normalize("NFC").replace(/[\/\\:*?"<>|\x00-\x1f]/g, " ").split(/\s+/).filter((t) => t && !/^\.+$/.test(t)).join(" ").trim().replace(/^\.+/, "").slice(0, 100);
+  return s || fallback;
+}

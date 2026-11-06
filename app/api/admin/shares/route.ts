@@ -22,6 +22,8 @@ export async function POST(req: NextRequest) {
       visitLimit: b.visitLimit ? Number(b.visitLimit) : null,
       askName: !!b.askName,
       paths: Array.isArray(b.paths) ? b.paths.map(String) : undefined,
+      uploadPath: b.uploadPath ? String(b.uploadPath) : null,
+      uploadLimit: b.uploadLimit ? Number(b.uploadLimit) : null,
     });
     return NextResponse.json({ share: { ...s, password_hash: undefined, password_enc: undefined, password: sharePassword(s) } });
   } catch (e) {

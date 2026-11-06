@@ -3,6 +3,7 @@ import Brand from "../../brand";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AdminStrip from "./adminstrip";
 import Tour from "./tour";
+import Uploader from "./upload";
 import { CoverModal } from "../../admin/pickers";
 
 type Entry = { name: string; rel: string; kind: "folder" | "image" | "video" | "raw" | "audio" | "file"; size: number; mtime: number; count?: number; duration?: number | null; cover?: string | null; alias?: string | null; real?: string; hidden?: boolean };
@@ -324,6 +325,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
           </nav>
         </div>
         <div className="actions">
+          {!isLib && <Uploader token={token} say={say} onDone={() => { setLevels({}); reload(); }} />}
           <button className="btn" onClick={toggleAll} disabled={!all.length}>{sel.size && sel.size === all.length ? "CLEAR" : "SELECT ALL"}</button>
           {sel.size > 0 && <button className="btn" onClick={() => zip([...sel])} disabled={!!busy}>DOWNLOAD SELECTED ({sel.size})</button>}
           {admin && selEntries.length > 0 && <button className="btn blue" onClick={() => hide(selEntries, !selEntries.every((e) => e.hidden))} title="Hide from every visitor — files stay on the NAS">{selEntries.every((e) => e.hidden) ? `SHOW (${selEntries.length})` : `HIDE (${selEntries.length})`}</button>}
