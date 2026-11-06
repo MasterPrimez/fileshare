@@ -16,7 +16,8 @@ import { visitorId } from "@/lib/auth";
  *        → { ok, done, rel }   when the last chunk lands the file is moved into <upload_path>/<album>/<name>
  * Add-only: visitors never overwrite (duplicates get " 2", " 3" …) and never delete.
  */
-const TMP = () => { const d = path.join(process.env.APP_DATA || "/app/data", "upload-tmp"); fs.mkdirSync(d, { recursive: true }); return d; };
+/** Chunks are staged INSIDE the destination folder (same filesystem → atomic rename at the end). Dot-folder, so it never shows in listings. */
+const TMP = (destAbs: string) => { const d = path.join(destAbs, ".uploading"); fs.mkdirSync(d, { recursive: true }); return d; };
 const CHUNK_MAX = 25 * 1024 * 1024;
 
 function dest(share: { upload_path: string | null }) { return share.upload_path ? resolveSafe(share.upload_path) : null; }
@@ -48,7 +49,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     if (used + size > r.share.upload_limit) return NextResponse.json({ error: "full", used, limit: r.share.upload_limit }, { status: 413 });
   }
   const vid = (await visitorId()) || "anon";
-  const tmp = path.join(TMP(), `${vid.replace(/[^a-z0-9]/gi, "").slice(0, 32)}-${id}.part`);
+  let tmp: string;
+  try { tmp = path.join(TMP(d.abs), `${vid.replace(/[^a-z0-9]/gi, "").slice(0, 32)}-${id}.part`); } catch (e) { console.error("upload: cannot create staging folder", d.abs, e); return NextResponse.json({ error: "destination not writable" }, { status: 500 }); }
   if (chunk === 0 && fs.existsSync(tmp)) fs.unlinkSync(tmp);
   // append this chunk (bounded)
   let got = 0;
@@ -60,11 +62,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   const st = fs.statSync(tmp);
   if (size && st.size !== size) { fs.unlinkSync(tmp); return NextResponse.json({ error: "size mismatch" }, { status: 400 }); }
   const albumAbs = path.join(d.abs, album);
-  fs.mkdirSync(albumAbs, { recursive: true });
+  try { fs.mkdirSync(albumAbs, { recursive: true }); } catch (e) { console.error("upload: cannot create album", albumAbs, e); fs.unlinkSync(tmp); return NextResponse.json({ error: "destination not writable" }, { status: 500 }); }
   const ext = path.extname(name), stem = name.slice(0, name.length - ext.length);
   let final = path.join(albumAbs, name), n = 2;
   while (fs.existsSync(final)) final = path.join(albumAbs, `${stem} ${n++}${ext}`);
-  fs.renameSync(tmp, final);
+  try { fs.renameSync(tmp, final); } catch { fs.copyFileSync(tmp, final); fs.unlinkSync(tmp); }
   logEvent(r.share.id, "upload", `${album}/${path.basename(final)}`, req, vid === "anon" ? null : vid, st.size);
   return NextResponse.json({ ok: true, done: true, rel: `${album}/${path.basename(final)}` });
 }
