@@ -69,7 +69,20 @@ export function updateShare(id: string, patch: Partial<{ mode: "view" | "edit"; 
   if (patch.revoked !== undefined) { sets.push("revoked = ?"); vals.push(patch.revoked ? 1 : 0); }
   if (patch.askName !== undefined) { sets.push("ask_name = ?"); vals.push(patch.askName ? 1 : 0); }
   if (patch.uploadPath !== undefined) {
-    if (patch.uploadPath) { const p = patch.uploadPath.replace(/^\/+|\/+$/g, ""); if (!resolveSafe(p) || !p.includes("/")) throw new Error("Upload folder must be inside a root"); sets.push("upload_path = ?"); vals.push(p); }
+    if (patch.uploadPath) {
+      const p = patch.uploadPath.replace(/^\/+|\/+$/g, "");
+      if (!resolveSafe(p) || !p.includes("/")) throw new Error("Upload folder must be inside a root");
+      sets.push("upload_path = ?"); vals.push(p);
+      // visitors must be able to SEE the uploads: if the landing folder is outside the share, add it as a folder of the share
+      if (!patch.paths) {
+        const cur = getShareById(id);
+        if (cur) {
+          const folders = shareItems(cur).map((i) => i.base);
+          if (!folders.some((f) => p === f || p.startsWith(f + "/"))) { const list = [...folders, p]; sets.push("paths = ?"); vals.push(JSON.stringify(list)); }
+        }
+      }
+      try { const r = resolveSafe(p); if (r && !fs.existsSync(r.abs)) fs.mkdirSync(r.abs, { recursive: true }); } catch {}
+    }
     else { sets.push("upload_path = ?"); vals.push(null); }
   }
   if (patch.uploadLimit !== undefined) { sets.push("upload_limit = ?"); vals.push(patch.uploadLimit && patch.uploadLimit > 0 ? Math.round(patch.uploadLimit) : null); }
@@ -141,6 +154,7 @@ export function eventCounts(shareId: string) {
 export function sharePassword(s: Share): string | null { return open(s.password_enc); }
 
 import path from "node:path";
+import fs from "node:fs";
 export type CollectionItem = { name: string; base: string };
 /** Collection items: display name (basename, de-duped) → root-relative folder. Single shares return one item named "". */
 export function shareItems(s: Share): CollectionItem[] {
