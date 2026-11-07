@@ -43,7 +43,7 @@ sed -i 's/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=NEW/' .env && sudo docker compose up
 Source of truth: private repo `github.com/MasterPrimez/fileshare` (branch `main`). `.env` and `data/` are gitignored — never in the repo.
 - NAS has a read-only deploy key (`/root/.ssh/fileshare_deploy`, added under repo Settings → Deploy keys).
 - UGOS has no git/apt; `/usr/local/bin/git` is a wrapper that runs `alpine/git` in Docker.
-- Root cron every 2 min runs `/volume1/docker/fileshare/deploy.sh`: fetch → if main moved, `git reset --hard` + `docker compose build` + `up -d`. Log: `data/deploy.log`.
+- Root cron every 2 min runs `/volume1/docker/fileshare/deploy.sh`: fetch → if origin/main ≠ `data/deployed`, `git reset --hard` + `docker compose build` + `up -d`. Build output goes to `data/build.log`; `data/deployed` is only written on success, so a failed build retries on the next tick. Summary log: `data/deploy.log` (`ok · Container share Started` = new image live; `BUILD FAILED` = look at build.log).
 - Push to main = live within ~2 min. Manual: `sudo ./deploy.sh` (`sudo ./deploy.sh force` to rebuild anyway). Rollback: `git revert` + push.
 - Stale-cache symptom (build says CACHED, change missing): `sudo docker compose build --no-cache && sudo docker compose up -d`.
 
