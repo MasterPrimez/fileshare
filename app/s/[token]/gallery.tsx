@@ -28,6 +28,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
   const [path, setPath] = useState("");
   const [crumbInfo, setCrumbInfo] = useState<Crumb[]>([]);
   const [real, setReal] = useState<string | null>(null);
+  const [uploadPath, setUploadPath] = useState<string | null>(null);
   const [coverFor, setCoverFor] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [pendingOpen, setPendingOpen] = useState<string | null>(null);
@@ -83,7 +84,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
     const r = await fetch(`/api/s/${token}/list?p=${encodeURIComponent(p)}`);
     if (!r.ok) { if (r.status === 401) location.reload(); return; }
     const j = await r.json();
-    setEntries(j.entries); setIsColl(!!j.share?.collection); setCrumbInfo(j.crumbs || []); setReal(j.real ?? null);
+    setEntries(j.entries); setIsColl(!!j.share?.collection); setCrumbInfo(j.crumbs || []); setReal(j.real ?? null); setUploadPath(j.uploadPath ?? null);
     if (!quiet) { setSel(new Set()); setAnchor(null); setGalIdx(0); }
   }, [token]);
   useEffect(() => { if (mounted.current) load(path); }, [path, load]);
@@ -285,10 +286,19 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
     say(r.ok ? (hidden ? `${paths.length} HIDDEN FROM VISITORS` : `${paths.length} VISIBLE AGAIN`) : "FAILED"); setSel(new Set()); setLevels({}); reload();
   }
   const selEntries = all.filter((e) => sel.has(e.rel) && e.kind !== "folder");
+  const inUploads = (e: Entry) => !!uploadPath && !!e.real && e.real.startsWith(uploadPath + "/");
+  const selUploads = all.filter((e) => sel.has(e.rel) && inUploads(e));
+  async function trash(list: Entry[]) {
+    const paths = list.map((e) => e.real).filter(Boolean);
+    if (!paths.length || !shareId) return;
+    if (!confirm(`Remove ${paths.length === 1 ? `"${list[0].name}"` : `${paths.length} items`} from this share?\nMoved to a hidden .trash folder inside the uploads folder — recoverable in UGOS Files.`)) return;
+    const r = await fetch("/api/admin/trash", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ shareId, paths }) });
+    say(r.ok ? `${paths.length} REMOVED` : "FAILED"); setSel(new Set()); setLevels({}); reload();
+  }
   const nHidden = raw.filter((e) => e.hidden).length;
   const canRemove = !!admin && !isLib && isColl && !path && folders.length > 1;
   const canRename = (e: Entry) => !!admin && e.kind === "folder" && !!e.real && e.real.includes("/");
-  const adminTile = admin ? { renaming, onCover: (e: Entry) => e.real && setCoverFor(e.real), onRenameStart: (e: Entry) => canRename(e) && setRenaming(e.rel), onRename: renameFolder, onRemove: canRemove ? removeFolder : undefined, canRename, onHide: (e: Entry) => hide([e], !e.hidden) } : undefined;
+  const adminTile = admin ? { renaming, onCover: (e: Entry) => e.real && setCoverFor(e.real), onRenameStart: (e: Entry) => canRename(e) && setRenaming(e.rel), onRename: renameFolder, onRemove: canRemove ? removeFolder : undefined, canRename, onHide: (e: Entry) => hide([e], !e.hidden), onTrash: (e: Entry) => trash([e]), canTrash: inUploads } : undefined;
 
   return (
     <div className="page">
@@ -328,6 +338,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
           {!isLib && <Uploader token={token} say={say} onDone={() => { setLevels({}); reload(); }} />}
           <button className="btn" onClick={toggleAll} disabled={!all.length}>{sel.size && sel.size === all.length ? "CLEAR" : "SELECT ALL"}</button>
           {sel.size > 0 && <button className="btn" onClick={() => zip([...sel])} disabled={!!busy}>DOWNLOAD SELECTED ({sel.size})</button>}
+          {admin && selUploads.length > 0 && <button className="btn blue danger" onClick={() => trash(selUploads)} title="Remove visitor uploads (moved to .trash)">REMOVE ({selUploads.length})</button>}
           {admin && selEntries.length > 0 && <button className="btn blue" onClick={() => hide(selEntries, !selEntries.every((e) => e.hidden))} title="Hide from every visitor — files stay on the NAS">{selEntries.every((e) => e.hidden) ? `SHOW (${selEntries.length})` : `HIDE (${selEntries.length})`}</button>}
           {canEdit && !(isColl && !path) && <>
             <input ref={fileIn} type="file" multiple hidden onChange={(e) => upload(e.target.files)} />
@@ -494,7 +505,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
   );
 }
 
-type AdmTile = { renaming: string | null; onCover: (e: Entry) => void; onRenameStart: (e: Entry) => void; onRename: (e: Entry, name: string) => void; onRemove?: (e: Entry) => void; canRename: (e: Entry) => boolean; onHide: (e: Entry) => void };
+type AdmTile = { renaming: string | null; onCover: (e: Entry) => void; onRenameStart: (e: Entry) => void; onRename: (e: Entry, name: string) => void; onRemove?: (e: Entry) => void; canRename: (e: Entry) => boolean; onHide: (e: Entry) => void; onTrash: (e: Entry) => void; canTrash: (e: Entry) => boolean };
 
 function RenameBox({ name, onDone }: { name: string; onDone: (n: string) => void }) {
   const [v, setV] = useState(name);
@@ -513,6 +524,7 @@ function Tile({ e, isSel, thumb, onOpen, onSelect, adm }: { e: Entry; isSel: boo
         {e.real && <span className={e.cover ? "on" : ""} title="Folder cover" onClick={() => adm.onCover(e)}><svg width="12" height="12" viewBox="0 0 24 24" fill={e.alias === undefined ? "none" : "none"} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z" /></svg></span>}
         {adm.canRename(e) && <span title="Rename (display only — disk unchanged)" onClick={() => adm.onRenameStart(e)}>✎</span>}
         {adm.onRemove && <span className="rm" title="Remove from this share" onClick={() => adm.onRemove!(e)}>✕</span>}
+        {adm.canTrash(e) && <span className="rm" title="Delete this uploaded album (moved to .trash)" onClick={() => adm.onTrash(e)}><ITrash /></span>}
       </span> : <span className="box" onClick={(ev) => { ev.stopPropagation(); onSelect(e.rel, ev); }}>{isSel && <Check />}</span>}
       <span className="cap">{renaming ? <RenameBox name={e.name} onDone={(n) => adm!.onRename(e, n)} /> : <span className="n" title={e.alias ? `Folder on disk: ${e.real?.split("/").pop()}` : undefined}>{e.name.toUpperCase()}{e.alias && adm && <i className="aliasdot" title="Renamed for visitors" />}</span>}<span className="s">{e.count} ITEMS</span></span>
     </button>
@@ -520,7 +532,7 @@ function Tile({ e, isSel, thumb, onOpen, onSelect, adm }: { e: Entry; isSel: boo
   return (
     <button className={`tile ${isSel ? "sel" : ""} ${e.hidden ? "hid" : ""} ${adm ? "adm" : ""}`} onClick={(ev) => onOpen(e, ev)} onContextMenu={(ev) => { ev.preventDefault(); onSelect(e.rel, ev); }} aria-label={e.name}>
       {thumbable ? <Thumb src={thumb} ext={e.name.split(".").pop() || ""} /> : <span className="noimg">{(e.name.split(".").pop() || "FILE").toUpperCase()}</span>}
-      {adm && <span className="ahover file" onClick={(ev) => ev.stopPropagation()}><span className={e.hidden ? "on" : ""} title={e.hidden ? "Show to visitors" : "Hide from visitors (stays on the NAS)"} onClick={() => adm.onHide(e)}>{e.hidden ? <IEye /> : <IEyeOff />}</span></span>}
+      {adm && <span className="ahover file" onClick={(ev) => ev.stopPropagation()}><span className={e.hidden ? "on" : ""} title={e.hidden ? "Show to visitors" : "Hide from visitors (stays on the NAS)"} onClick={() => adm.onHide(e)}>{e.hidden ? <IEye /> : <IEyeOff />}</span>{adm.canTrash(e) && <span className="rm" title="Delete this upload (moved to .trash)" onClick={() => adm.onTrash(e)}><ITrash /></span>}</span>}
       {e.kind === "video" && <span className="badge"><Play />{e.duration ? fmtDur(e.duration) : "VIDEO"}</span>}
       {e.kind === "raw" && <span className="badge">RAW</span>}
       {e.kind === "audio" && <span className="badge"><IAudio />{e.duration ? fmtDur(e.duration) : "AUDIO"}</span>}
@@ -541,6 +553,7 @@ function AudioCard({ e, src, autoPlay }: { e: Entry; src: string; autoPlay?: boo
   );
 }
 
+function ITrash() { return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>; }
 function IEye() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>; }
 function IEyeOff() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M3 3l18 18M10.6 6.3A10.7 10.7 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3.2 3.7M6.6 6.6C3.8 8.4 2 12 2 12s3.5 6 10 6c1.5 0 2.8-.3 4-.8" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></svg>; }
 function Check() { return <svg width="11" height="11" viewBox="0 0 11 11" aria-hidden="true"><path d="M1.5 6l3 3 5-7" stroke="#0c0c0d" strokeWidth="1.8" fill="none" /></svg>; }

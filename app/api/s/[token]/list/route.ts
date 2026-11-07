@@ -33,5 +33,5 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ toke
     return { rel: segs.slice(0, i + 1).join("/"), name: getAlias(real) || (isRoot ? (listRoots().find((x) => x.id === mm.base)?.label || seg) : seg) };
   });
   const real = admin && m ? (m.rest ? `${m.base}/${m.rest}` : m.base) : null;
-  return NextResponse.json({ real, share: { id: r.share.id, name: r.share.name, mode: r.share.mode, expires_at: r.share.expires_at, collection: isCollection(r.share) }, path: sub, crumbs, entries: admin ? withDur : publicEntries(withDur) });
+  return NextResponse.json({ real, uploadPath: admin ? r.share.upload_path : undefined, share: { id: r.share.id, name: r.share.name, mode: r.share.mode, expires_at: r.share.expires_at, collection: isCollection(r.share) }, path: sub, crumbs, entries: admin ? withDur : publicEntries(withDur) });
 }

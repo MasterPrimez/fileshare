@@ -686,3 +686,5 @@ main.grid .tiles[style*="--cols"] { grid-template-columns: repeat(var(--cols, 6)
 .tclick:hover .tpen { opacity: 1; }
 .aname.tclick .tpen { font-size: 10px; margin-left: 6px; }
 input.tedit { font-family: var(--display); font-size: 34px; letter-spacing: .02em; color: var(--bright); background: transparent; border: 0; border-bottom: 1px solid var(--amber); outline: none; padding: 0 2px; margin: 0; width: min(100%, 640px); text-transform: uppercase; }
+.btn.blue.danger { color: #ff8a8a; border-color: #4a2626; background: #1c1212; }
+.btn.blue.danger::before { background: var(--red); }
