@@ -67,6 +67,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   let final = path.join(albumAbs, name), n = 2;
   while (fs.existsSync(final)) final = path.join(albumAbs, `${stem} ${n++}${ext}`);
   try { fs.renameSync(tmp, final); } catch { fs.copyFileSync(tmp, final); fs.unlinkSync(tmp); }
+  // match the owner of the landing folder (the NAS user), so uploads aren't root-owned in UGOS Files
+  try { const o = fs.statSync(d.abs); fs.chownSync(final, o.uid, o.gid); fs.chownSync(albumAbs, o.uid, o.gid); } catch {}
   logEvent(r.share.id, "upload", `${album}/${path.basename(final)}`, req, vid === "anon" ? null : vid, st.size);
   return NextResponse.json({ ok: true, done: true, rel: `${album}/${path.basename(final)}` });
 }
