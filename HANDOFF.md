@@ -91,6 +91,7 @@ lib/db.ts                  better-sqlite3 schema (shares, events)
 - **Display names**: `aliases` table (root-relative folder path → name), `getAlias/setAlias` in lib/files.ts, `PATCH /api/admin/alias`. `Entry.name` already reflects the alias; `Entry.alias/real` are admin-only (`publicEntries()` strips them for visitors). Roots can't be renamed. Disk is never touched.
 - **Share folders**: `PATCH /api/admin/shares/:id { paths: [...] }` adds/removes folders (updateShare validates each). Detail page lists folders with rename / cover / remove + FolderPicker (`app/admin/pickers.tsx`, shared with the strip).
 - **History**: gallery folder = `?p=`, lightbox = `?f=`; `nav()` pushes state, popstate restores, so back/forward and deep links work. Admin tabs live in the hash (`#shares`, `#share/<id>`, `#new?p=`).
+- **Video hover-scrub** (`Scrub` in gallery.tsx): hovering a video tile loads it muted; mouse X seeks; red `.phead` bar at the bottom. Desktop only (`@media (hover: none)` hides it).
 - **Logo** is a link: visitor → share root, admin → /admin. `.brand .tag` has the Kinetics gradient-shimmer sweep.
 - **First-visit tour** (`app/s/[token]/tour.tsx`): 4 coach marks (views, filters, open, download), once per browser (`localStorage share:tour:v1`), visitors only. Bump the key to show it again after big UI changes.
 - **Breadcrumb chips** (`.crumbs.chips`): on every folder change a trail-wide sheen crosses the chips (per-chip `--cw/--cx` set in gallery.tsx), current folder fills amber. Michael may want to revisit this animation.

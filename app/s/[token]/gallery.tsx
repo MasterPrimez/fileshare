@@ -380,7 +380,7 @@ export default function Gallery({ token, name, mode, expiresAt, admin, shareId }
 
         {view === "grid" && (
           <div className="tiles" style={{ ["--cols" as string]: cols }}>
-            {all.map((e) => <Tile key={e.rel} e={e} isSel={sel.has(e.rel)} thumb={thumbUrl(e.rel)} onOpen={openEntry} onSelect={select} adm={adminTile} />)}
+            {all.map((e) => <Tile key={e.rel} e={e} isSel={sel.has(e.rel)} thumb={thumbUrl(e.rel)} video={e.kind === "video" ? fileUrl(e.rel) : undefined} onOpen={openEntry} onSelect={select} adm={adminTile} />)}
           </div>
         )}
 
@@ -512,7 +512,7 @@ function RenameBox({ name, onDone }: { name: string; onDone: (n: string) => void
   return <input className="arename" value={v} autoFocus onChange={(e) => setV(e.target.value)} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Enter") onDone(v.trim() || name); if (e.key === "Escape") onDone(name); }} onBlur={() => onDone(v.trim() || name)} aria-label="Display name" />;
 }
 
-function Tile({ e, isSel, thumb, onOpen, onSelect, adm }: { e: Entry; isSel: boolean; thumb: string; onOpen: (e: Entry, ev: React.MouseEvent) => void; onSelect: (rel: string, ev: React.MouseEvent) => void; adm?: AdmTile }) {
+function Tile({ e, isSel, thumb, video, onOpen, onSelect, adm }: { e: Entry; isSel: boolean; thumb: string; video?: string; onOpen: (e: Entry, ev: React.MouseEvent) => void; onSelect: (rel: string, ev: React.MouseEvent) => void; adm?: AdmTile }) {
   const thumbable = e.kind === "image" || e.kind === "video" || e.kind === "raw";
   if (e.kind === "folder") {
     const renaming = adm?.renaming === e.rel;
@@ -532,6 +532,7 @@ function Tile({ e, isSel, thumb, onOpen, onSelect, adm }: { e: Entry; isSel: boo
   return (
     <button className={`tile ${isSel ? "sel" : ""} ${e.hidden ? "hid" : ""} ${adm ? "adm" : ""}`} onClick={(ev) => onOpen(e, ev)} onContextMenu={(ev) => { ev.preventDefault(); onSelect(e.rel, ev); }} aria-label={e.name}>
       {thumbable ? <Thumb src={thumb} ext={e.name.split(".").pop() || ""} /> : <span className="noimg">{(e.name.split(".").pop() || "FILE").toUpperCase()}</span>}
+      {e.kind === "video" && video && <Scrub src={video} />}
       {adm && <span className="ahover file" onClick={(ev) => ev.stopPropagation()}><span className={e.hidden ? "on" : ""} title={e.hidden ? "Show to visitors" : "Hide from visitors (stays on the NAS)"} onClick={() => adm.onHide(e)}>{e.hidden ? <IEye /> : <IEyeOff />}</span>{adm.canTrash(e) && <span className="rm" title="Delete this upload (moved to .trash)" onClick={() => adm.onTrash(e)}><ITrash /></span>}</span>}
       {e.kind === "video" && <span className="badge"><Play />{e.duration ? fmtDur(e.duration) : "VIDEO"}</span>}
       {e.kind === "raw" && <span className="badge">RAW</span>}
@@ -540,6 +541,26 @@ function Tile({ e, isSel, thumb, onOpen, onSelect, adm }: { e: Entry; isSel: boo
       <span className="box" onClick={(ev) => { ev.stopPropagation(); onSelect(e.rel, ev); }}>{isSel && <Check />}</span>
       <span className="cap"><span className="n">{e.name}</span><span className="s">{fmtSize(e.size)}</span></span>
     </button>
+  );
+}
+
+/** Hover-scrub for video tiles: mouse X = position in the clip; red bar tracks the playhead. Video only loads on first hover. */
+function Scrub({ src }: { src: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [on, setOn] = useState(false);
+  const [pct, setPct] = useState(0);
+  const [ready, setReady] = useState(false);
+  const seek = (ev: React.MouseEvent) => {
+    const v = ref.current; if (!v || !v.duration) return;
+    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width));
+    v.currentTime = f * v.duration; setPct(f * 100);
+  };
+  return (
+    <span className={`scrub ${on ? "on" : ""} ${ready ? "ready" : ""}`} onMouseEnter={() => setOn(true)} onMouseLeave={() => { setOn(false); setPct(0); }} onMouseMove={seek}>
+      {on && <video ref={ref} src={src + "#t=0.001"} muted playsInline preload="metadata" onLoadedData={() => setReady(true)} />}
+      <i className="phead" style={{ width: `${pct}%` }} />
+    </span>
   );
 }
 
